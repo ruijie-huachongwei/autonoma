@@ -12,9 +12,9 @@
         "lint": "oxlint --fix src/",
         "fmt": "oxfmt --write src/",
         "db": "dotenv -e ../../.env -- prisma",
-        "db:generate": "DATABASE_EVALS_URL=${DATABASE_EVALS_URL:-postgres://postgres:postgres@localhost:5432/evals} pnpm db generate",
-        "postinstall": "pnpm db:generate",
-        "db:migrate": "pnpm db migrate dev"
+        "db:generate": "DATABASE_EVALS_URL=${DATABASE_EVALS_URL:-postgres://postgres:postgres@localhost:5432/evals} pnpm run db -- generate",
+        "postinstall": "pnpm run db:generate",
+        "db:migrate": "pnpm run db -- migrate dev"
     },
     "dependencies": {
         "@prisma/adapter-pg": "catalog:",

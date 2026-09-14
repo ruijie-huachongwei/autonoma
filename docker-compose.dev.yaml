@@ -86,7 +86,7 @@ services:
   api:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && pnpm install && pnpm db:generate && pnpm api"
+    command: sh -c "corepack enable && pnpm install && pnpm run db:generate && pnpm run api"
     ports:
       - "4000:4000"
     env_file: .env
@@ -112,7 +112,7 @@ services:
   ui:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && pnpm install && pnpm ui -- --host 0.0.0.0"
+    command: sh -c "corepack enable && pnpm install && pnpm run ui -- --host 0.0.0.0"
     ports:
       - "3000:3000"
     env_file: .env

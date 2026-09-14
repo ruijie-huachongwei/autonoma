@@ -14,9 +14,9 @@
         "fmt": "oxfmt --write src/",
         "test": "vitest run --passWithNoTests",
         "db": "dotenv -e ../../.env -- prisma",
-        "db:generate": "DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres} pnpm db generate",
-        "postinstall": "pnpm db:generate",
-        "db:migrate": "pnpm db migrate dev",
+        "db:generate": "DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres} pnpm run db -- generate",
+        "postinstall": "pnpm run db:generate",
+        "db:migrate": "pnpm run db -- migrate dev",
         "db:seed": "dotenv -e ../../.env -- tsx src/seed.ts"
     },
     "dependencies": {
