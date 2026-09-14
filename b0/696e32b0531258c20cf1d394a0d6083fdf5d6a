@@ -1,0 +1,57 @@
+docker-compose.dev.yaml
+  s_8ff20fda91231c::t_e3a669191a4e15 120-121
+apps/ui/vite.config.ts
+  s_8ff20fda91231c::t_3992813ccdf967 17-20
+  s_8ff20fda91231c::t_d1a0bdea18923b 21-22,92,96,100,106
+apps/ui/src/lib/api-origin.ts
+  s_8ff20fda91231c::t_7ab91b47bc990d 15-19
+apps/ui/src/lib/api-origin.test.ts
+  s_8ff20fda91231c::t_7ab91b47bc990d 1-27
+apps/ui/README.md
+  s_8ff20fda91231c::t_0b131a639b50d3 47-48
+  s_8ff20fda91231c::t_7ab91b47bc990d 53
+  s_8ff20fda91231c::t_d1a0bdea18923b 52
+---
+{
+  "schema_version": "authorship/3.1.0",
+  "git_ai_version": "2.2.51",
+  "base_commit_sha": "b0696e32b0531258c20cf1d394a0d6083fdf5d6a",
+  "prompts": {
+    "s_8ff20fda91231c::t_7ab91b47bc990d": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 6,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    },
+    "s_8ff20fda91231c::t_e3a669191a4e15": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 6,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_8ff20fda91231c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
