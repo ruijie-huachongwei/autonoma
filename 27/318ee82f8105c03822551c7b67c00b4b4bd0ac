@@ -1,0 +1,33 @@
+turbo.json
+  s_8ff20fda91231c::t_339100d5c398ef 10-11
+---
+{
+  "schema_version": "authorship/3.1.0",
+  "git_ai_version": "2.2.51",
+  "base_commit_sha": "27318ee82f8105c03822551c7b67c00b4b4bd0ac",
+  "prompts": {
+    "s_8ff20fda91231c::t_339100d5c398ef": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_8ff20fda91231c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>"
+    }
+  }
+}
