@@ -14,6 +14,12 @@ function readApiPort(): string {
     }
 }
 
+function readApiProxyUrl(): string {
+    return process.env.API_PROXY_URL ?? `http://localhost:${readApiPort()}`;
+}
+
+const API_PROXY_URL = readApiProxyUrl();
+
 // Framework core that loads on every route. Isolating it into stable, long-cached
 // vendor chunks means an app-code deploy doesn't force browsers to re-download it.
 // Route-specific libs (react-markdown, ...) are intentionally left out so
@@ -83,21 +89,21 @@ export default defineConfig({
         port: 3000,
         proxy: {
             "/v1": {
-                target: `http://localhost:${readApiPort()}`,
+                target: API_PROXY_URL,
                 changeOrigin: true,
             },
             "/rs": {
-                target: `http://localhost:${readApiPort()}`,
+                target: API_PROXY_URL,
                 changeOrigin: true,
             },
             "/flags": {
-                target: `http://localhost:${readApiPort()}`,
+                target: API_PROXY_URL,
                 changeOrigin: true,
             },
             // MCP OAuth discovery: Better Auth advertises these at the app origin,
             // but the API serves them (mirrors the nginx.conf.template rule).
             "/.well-known/oauth-": {
-                target: `http://localhost:${readApiPort()}`,
+                target: API_PROXY_URL,
                 changeOrigin: true,
             },
         },

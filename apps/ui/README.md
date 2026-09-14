@@ -44,11 +44,13 @@ pnpm preview        # serves the built dist/ locally
 
 ## Environment Variables
 
-Defined in `src/env.ts` using `@t3-oss/env-core` with Zod validation. All variables use the `VITE_` prefix.
+Browser variables are defined in `src/env.ts` using `@t3-oss/env-core` with Zod validation and use the `VITE_`
+prefix. `API_PROXY_URL` is read only by the Vite development server.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `VITE_API_URL` | No | `http://localhost:4000` | API server URL |
+| `API_PROXY_URL` | No | `http://localhost:<API_PORT>` | Server-side target for the Vite development proxy. Docker Compose sets this to `http://api:4000`; it is never exposed to browser code. |
+| `VITE_API_URL` | No | `http://localhost:4000` | Browser-reachable API URL. Set this to the server address for LAN/self-hosted deployments. |
 | `VITE_INTERNAL_DOMAIN` | No | `autonoma.app` | Internal domain for auth base URL resolution |
 | `VITE_TEMPORAL_URL` | No | - | Temporal UI dashboard URL |
 | `VITE_SENTRY_DSN` | No | - | Sentry DSN for error tracking (disabled if unset) |
