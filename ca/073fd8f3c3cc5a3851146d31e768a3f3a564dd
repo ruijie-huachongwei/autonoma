@@ -1,0 +1,65 @@
+apps/ui/README.md
+  s_8ff20fda91231c::t_d1a0bdea18923b 52
+  s_8ff20fda91231c::t_0b131a639b50d3 47-48
+apps/ui/vite.config.ts
+  s_8ff20fda91231c::t_3992813ccdf967 17-20
+  s_8ff20fda91231c::t_d1a0bdea18923b 21-22,92,96,100,106
+docker-compose.dev.yaml
+  s_8ff20fda91231c::t_d1a0bdea18923b 120
+---
+{
+  "schema_version": "authorship/3.1.0",
+  "git_ai_version": "2.2.51",
+  "base_commit_sha": "ca073fd8f3c3cc5a3851146d31e768a3f3a564dd",
+  "prompts": {
+    "s_8ff20fda91231c::t_0b131a639b50d3": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 7,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "s_8ff20fda91231c::t_3992813ccdf967": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 7,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "s_8ff20fda91231c::t_d1a0bdea18923b": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 7,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_8ff20fda91231c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>"
+    }
+  }
+}
