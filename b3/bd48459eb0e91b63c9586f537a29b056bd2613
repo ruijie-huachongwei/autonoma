@@ -1,0 +1,51 @@
+packages/db/package.json
+  s_8ff20fda91231c::t_484d00bceeb6c4 17-19
+docker-compose.dev.yaml
+  s_8ff20fda91231c::t_484d00bceeb6c4 89,115
+packages/db-evals/package.json
+  s_8ff20fda91231c::t_484d00bceeb6c4 15-16
+  s_8ff20fda91231c::t_0830f08423bd9b 17
+---
+{
+  "schema_version": "authorship/3.1.0",
+  "git_ai_version": "2.2.51",
+  "base_commit_sha": "b3bd48459eb0e91b63c9586f537a29b056bd2613",
+  "prompts": {
+    "s_8ff20fda91231c::t_0830f08423bd9b": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 8,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "s_8ff20fda91231c::t_484d00bceeb6c4": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 8,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_8ff20fda91231c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "57b8cdde-7eb6-4307-995e-135c1d4f99c5",
+        "model": "unknown"
+      },
+      "human_author": "huachongwei <huachongwei@ruijie.com.cn>"
+    }
+  }
+}
