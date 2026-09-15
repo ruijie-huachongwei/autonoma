@@ -8,9 +8,8 @@ import { trpcHandler } from "lib/storybook/trpc-handler";
  * The logged-out login page. `authHandlers({})` deliberately omits a session -
  * with one, the page still renders, but it is no longer the screen a visitor sees.
  *
- * Which buttons appear is the API's answer, not the page's: `auth.socialProviders`
- * lists only the providers this environment holds credentials for, so the fixture is
- * what decides between the stories below.
+ * Which buttons appear is the API's answer, not the page's: `auth.loginOptions`
+ * lists configured OAuth providers and the enterprise CAS entry URL when enabled.
  */
 const meta = {
   title: "Pages/Login",
@@ -18,7 +17,17 @@ const meta = {
   parameters: {
     pageStory: true,
     msw: {
-      handlers: [trpcHandler({ auth: { socialProviders: ["google", "github", "microsoft"] } }), ...authHandlers({})],
+      handlers: [
+        trpcHandler({
+          auth: {
+            loginOptions: {
+              socialProviders: ["google", "github", "microsoft"],
+              casLoginUrl: "http://autonoma.ruijie.com.cn:3000/v1/enterprise-auth/cas/login",
+            },
+          },
+        }),
+        ...authHandlers({}),
+      ],
     },
   },
 } satisfies Meta<typeof PageStory>;
@@ -66,7 +75,31 @@ export const GoogleOnly: Story = {
   decorators: [withLastProvider()],
   parameters: {
     msw: {
-      handlers: [trpcHandler({ auth: { socialProviders: ["google"] } }), ...authHandlers({})],
+      handlers: [
+        trpcHandler({ auth: { loginOptions: { socialProviders: ["google"], casLoginUrl: undefined } } }),
+        ...authHandlers({}),
+      ],
+    },
+  },
+};
+
+/** A self-hosted installation where Ruijie CAS is the only sign-in method. */
+export const CasOnly: Story = {
+  args: { path: "/login" },
+  decorators: [withLastProvider()],
+  parameters: {
+    msw: {
+      handlers: [
+        trpcHandler({
+          auth: {
+            loginOptions: {
+              socialProviders: [],
+              casLoginUrl: "http://autonoma.ruijie.com.cn:3000/v1/enterprise-auth/cas/login",
+            },
+          },
+        }),
+        ...authHandlers({}),
+      ],
     },
   },
 };

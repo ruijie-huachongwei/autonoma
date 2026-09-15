@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { ENABLED_SOCIAL_PROVIDERS } from "../../auth";
+import { casConfiguration } from "../../enterprise-auth/cas/cas-configuration";
 import { protectedProcedure, publicProcedure, router } from "../../trpc";
 
 export const authRouter = router({
@@ -9,6 +10,10 @@ export const authRouter = router({
     })),
     // Unauthenticated by nature - the login page calls this before anyone has a session.
     socialProviders: publicProcedure.query(() => ENABLED_SOCIAL_PROVIDERS),
+    loginOptions: publicProcedure.query(() => ({
+        socialProviders: ENABLED_SOCIAL_PROVIDERS,
+        casLoginUrl: casConfiguration?.autonomaLoginUrl,
+    })),
     orgStatus: publicProcedure.query(({ ctx }) => {
         if (ctx.user == null || ctx.session == null) {
             throw new TRPCError({ code: "UNAUTHORIZED" });

@@ -1,13 +1,14 @@
 import { Badge, BrailleSpinner, Button, Skeleton } from "@autonoma/blacklight";
 import { LAST_SOCIAL_PROVIDER_COOKIE, isPreviewHostname } from "@autonoma/types";
 import { GithubLogoIcon } from "@phosphor-icons/react/GithubLogo";
+import { ShieldCheckIcon } from "@phosphor-icons/react/ShieldCheck";
 import { createFileRoute } from "@tanstack/react-router";
 import { Google } from "components/icons/google";
 import { Microsoft } from "components/icons/microsoft";
 import { env } from "env";
 import { useAuthClient } from "lib/auth";
 import { postSignInUrl } from "lib/auth-redirect";
-import { ensureSocialProvidersData, useSocialProviders } from "lib/query/auth.queries";
+import { ensureLoginOptionsData, useLoginOptions } from "lib/query/auth.queries";
 import { toastManager } from "lib/toast-manager";
 import type { RouterOutputs } from "lib/trpc";
 import * as React from "react";
@@ -16,7 +17,7 @@ import { EmailPasswordForm } from "./-components/email-password-form";
 export const Route = createFileRoute("/_blacklight/(auth)/login/")({
   component: LoginPage,
   loader: async ({ context: { queryClient } }) => {
-    await ensureSocialProvidersData(queryClient);
+    await ensureLoginOptionsData(queryClient);
   },
   validateSearch: (search: Record<string, unknown>): { error?: string; redirectTo?: string } => {
     const parsed: { error?: string; redirectTo?: string } = {};
@@ -30,7 +31,7 @@ function useIsPreviewEnvironment() {
   return isPreviewHostname(window.location.hostname, env.VITE_INTERNAL_DOMAIN);
 }
 
-type SocialProvider = RouterOutputs["auth"]["socialProviders"][number];
+type SocialProvider = RouterOutputs["auth"]["loginOptions"]["socialProviders"][number];
 
 interface SocialProviderPresentation {
   label: string;
@@ -220,13 +221,27 @@ function SocialSignInButton({ provider, pendingProvider, isLastUsed, onSignIn }:
   );
 }
 
-function SocialSignIn() {
+function SignInOptions() {
   const { signIn, pendingProvider } = useSocialSignIn();
-  const { data: providers } = useSocialProviders();
+  const { data: loginOptions } = useLoginOptions();
+  const { redirectTo } = Route.useSearch();
+  const providers = loginOptions.socialProviders;
   const lastUsed = useLastSocialProvider(providers);
+  const casLoginUrl = resolveCasLoginUrl(loginOptions.casLoginUrl, redirectTo);
 
   return (
     <>
+      {casLoginUrl != null && (
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full gap-3"
+          render={<a href={casLoginUrl} />}
+        >
+          <ShieldCheckIcon weight="fill" className="size-4" />
+          <span>Continue with Ruijie SSO</span>
+        </Button>
+      )}
       {orderByLastUsed(providers, lastUsed).map((provider) => (
         <SocialSignInButton
           key={provider}
@@ -238,6 +253,13 @@ function SocialSignIn() {
       ))}
     </>
   );
+}
+
+function resolveCasLoginUrl(loginUrl: string | undefined, redirectTo: string | undefined): string | undefined {
+  if (loginUrl == null) return undefined;
+  const url = new URL(loginUrl);
+  if (redirectTo != null) url.searchParams.set("redirectTo", redirectTo);
+  return url.toString();
 }
 
 export function SocialSignInSkeleton() {
@@ -293,7 +315,7 @@ function LoginPage() {
             <EmailPasswordForm />
           ) : (
             <React.Suspense fallback={<SocialSignInSkeleton />}>
-              <SocialSignIn />
+              <SignInOptions />
             </React.Suspense>
           )}
         </div>

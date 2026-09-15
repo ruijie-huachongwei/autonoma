@@ -14,6 +14,8 @@ import { autonomaSdkHttpRouter } from "./autonoma-sdk/autonoma-sdk-http.router";
 import { auth, createContext, storageProvider } from "./context";
 import { demoHttpRouter } from "./demo/demo-http.router";
 import { diffsHttpRouter } from "./diffs/diffs-http.router";
+import { casConfiguration } from "./enterprise-auth/cas/cas-configuration";
+import { casHttpRouter } from "./enterprise-auth/cas/cas-http.router";
 import { env } from "./env";
 import { githubHttpRouter } from "./github/github-http.router";
 import { llmProxyHttpRouter } from "./llm-proxy/llm-proxy-http.router";
@@ -38,9 +40,20 @@ const BODY_LOG_BLOCKLIST_PREFIXES = ["/v1/previewkit/secrets", "/v1/installation
 // PostHog proxy path names, so events and feature flags each get their own mount point -
 // a filter-list hit on one leaves the other working.
 const POSTHOG_PROXY_PATH_PREFIXES = ["/rs", "/flags"];
+const REDACTED_QUERY_PARAMETERS: ReadonlySet<string> = new Set(["ticket", "state"]);
 
 function isPostHogProxyPath(path: string): boolean {
     return POSTHOG_PROXY_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function safeRequestUrl(rawUrl: string): string {
+    const url = new URL(rawUrl);
+    for (const parameter of url.searchParams.keys()) {
+        if (REDACTED_QUERY_PARAMETERS.has(parameter.toLowerCase())) {
+            url.searchParams.set(parameter, "[REDACTED]");
+        }
+    }
+    return url.toString();
 }
 
 const corsOptions = {
@@ -83,14 +96,20 @@ export function createApiApp() {
     app.use("*", async (c, next) =>
         Sentry.withScope(async (scope) => {
             scope.setTag("method", c.req.method);
-            scope.setTag("url", c.req.url);
+            const safeUrl = safeRequestUrl(c.req.url);
+            scope.setTag("url", safeUrl);
             scope.setTag("request_id", crypto.randomUUID());
 
             if (c.req.path === "/health" || isPostHogProxyPath(c.req.path)) return await next();
 
             const start = Date.now();
-            const { method, url } = c.req;
+            const { method } = c.req;
             const queryParams = c.req.queries();
+            for (const parameter of Object.keys(queryParams)) {
+                if (REDACTED_QUERY_PARAMETERS.has(parameter.toLowerCase())) {
+                    queryParams[parameter] = ["[REDACTED]"];
+                }
+            }
 
             let body: unknown;
             const contentType = c.req.header("content-type") ?? "";
@@ -111,14 +130,14 @@ export function createApiApp() {
                 }
             }
 
-            logger.info(`→ ${method} ${url}`, {
+            logger.info(`→ ${method} ${safeUrl}`, {
                 ...(Object.keys(queryParams).length && { queryParams }),
                 ...(body != null && { body }),
             });
 
             await next();
 
-            logger.info(`← ${method} ${url} ${c.res.status} (${Date.now() - start}ms)`, {
+            logger.info(`← ${method} ${safeUrl} ${c.res.status} (${Date.now() - start}ms)`, {
                 status: c.res.status,
                 duration: Date.now() - start,
             });
@@ -128,6 +147,12 @@ export function createApiApp() {
     app.use("/v1/auth/*", cors(corsOptions));
 
     app.on(["POST", "GET"], "/v1/auth/**", (c) => auth.handler(c.req.raw));
+
+    if (casConfiguration != null) {
+        app.route("/v1/enterprise-auth/cas", casHttpRouter);
+    } else {
+        logger.info("CAS enterprise authentication disabled");
+    }
 
     // MCP clients discover the authorization server from these well-known
     // endpoints (Better Auth's `mcp()` plugin serves the metadata). CORS is

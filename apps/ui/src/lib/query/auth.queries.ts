@@ -58,3 +58,11 @@ export function ensureSocialProvidersData(queryClient: QueryClient) {
 export function useSocialProviders() {
     return useSuspenseQuery(trpc.auth.socialProviders.queryOptions());
 }
+
+export function ensureLoginOptionsData(queryClient: QueryClient) {
+    return ensureAPIQueryData(queryClient, trpc.auth.loginOptions.queryOptions());
+}
+
+export function useLoginOptions() {
+    return useSuspenseQuery(trpc.auth.loginOptions.queryOptions());
+}

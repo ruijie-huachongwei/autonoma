@@ -1,6 +1,6 @@
 # @autonoma/api
 
-Backend API server for the Autonoma platform. Exposes a tRPC API over HTTP with social sign-in (Google, GitHub and Microsoft), GitHub webhook handling, and organization-based multi-tenancy.
+Backend API server for the Autonoma platform. Exposes a tRPC API over HTTP with social sign-in (Google, GitHub and Microsoft), optional enterprise CAS sign-in, GitHub webhook handling, and organization-based multi-tenancy.
 
 ## Tech Stack
 
@@ -28,6 +28,41 @@ pnpm lint          # biome check with auto-fix
 pnpm test          # unit tests (vitest)
 pnpm test:integration  # integration tests (vitest, Testcontainers)
 ```
+
+## Enterprise CAS
+
+Enterprise CAS is optional and isolated under `src/enterprise-auth/cas/`. It delegates one-time ticket validation to `tianshu-manager-service`, then creates an independent Better Auth user, account link, session, and organization membership. Manager browser tokens are never accepted or shared.
+
+Set all three variables to enable it; a partial configuration fails at startup:
+
+```dotenv
+CAS_MANAGER_BASE_URL=https://tianshu-test.ruijie.com.cn/tianshu-manager-service
+CAS_LOGIN_URL=https://sid.ruijie.com.cn/login
+CAS_IDENTITY_EXCHANGE_SECRET=<shared-server-secret>
+```
+
+The test manager web app is served from `https://tianshu-test.ruijie.com.cn` and routes its relative `/tianshu-manager-service` API prefix to the backend. Autonoma therefore calls the identity exchange endpoint at `https://tianshu-test.ruijie.com.cn/tianshu-manager-service/v1/auth/exchange-cas-ticket`. `CAS_MANAGER_BASE_URL` may include a different gateway path prefix in other environments.
+
+The identity exchange route is part of the accompanying `tianshu-manager-service` change. Deploy that service change to the test environment before enabling CAS in Autonoma; the existing deployment returns `No static resource v1/auth/exchange-cas-ticket` until the new controller route is present.
+
+`CAS_IDENTITY_EXCHANGE_SECRET` must match the server-side value in `tianshu-manager-service` and must never use a `VITE_*` variable. The manager-web origin is not the CAS `service` callback: CAS redirects the browser to the Autonoma callback shown below.
+
+For local hosts-based testing, map `autonoma.ruijie.com.cn` to the Autonoma host and use the Vite origin for UI, API proxying, and the CAS callback:
+
+```dotenv
+APP_URL=http://autonoma.ruijie.com.cn:3000
+BETTER_AUTH_URL=http://autonoma.ruijie.com.cn:3000
+VITE_API_URL=http://autonoma.ruijie.com.cn:3000
+ALLOWED_ORIGINS=http://autonoma.ruijie.com.cn:3000
+```
+
+Allowlist this exact callback base URL in the manager service and CAS environment:
+
+```text
+http://autonoma.ruijie.com.cn:3000/v1/enterprise-auth/cas/callback
+```
+
+For deployment behind an HTTPS reverse proxy, remove `:3000` and use `https://autonoma.ruijie.com.cn` for all three public origins.
 
 ## Application memories
 

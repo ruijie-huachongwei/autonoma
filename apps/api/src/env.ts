@@ -75,8 +75,14 @@ export const env = createEnv({
         // API must still boot everywhere else - the endpoint stays inert when unset.
         AUTONOMA_SHARED_SECRET: z.string().optional(),
         AUTONOMA_SIGNING_SECRET: z.string().optional(),
-        GOOGLE_CLIENT_ID: z.string().min(1),
-        GOOGLE_CLIENT_SECRET: z.string().min(1),
+        GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+        GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+
+        // Optional enterprise CAS adapter. All three values are required to enable
+        // the route and login option; partial configuration fails at startup.
+        CAS_MANAGER_BASE_URL: z.string().url().optional(),
+        CAS_LOGIN_URL: z.string().url().optional(),
+        CAS_IDENTITY_EXCHANGE_SECRET: z.string().min(1).optional(),
 
         // Credentials of the GitHub OAuth app backing GitHub sign-in. Unrelated to
         // the GITHUB_APP_* secrets below, which authenticate the repo-facing GitHub

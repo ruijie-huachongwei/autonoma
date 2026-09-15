@@ -447,6 +447,21 @@ async function resolveSessionOrg(
 
 const SOCIAL_PROVIDER_IDS = ["google", "github", "microsoft"] as const;
 export type SocialProviderId = (typeof SOCIAL_PROVIDER_IDS)[number];
+interface GoogleProviderConfig {
+    clientId: string;
+    clientSecret: string;
+}
+
+function googleProvider(): GoogleProviderConfig | undefined {
+    const clientId = env.GOOGLE_CLIENT_ID;
+    const clientSecret = env.GOOGLE_CLIENT_SECRET;
+    if (clientId == null || clientSecret == null) {
+        logger.info("Google OAuth credentials not configured - Google sign-in is disabled");
+        return undefined;
+    }
+    return { clientId, clientSecret };
+}
+
 interface GithubProviderConfig {
     clientId: string;
     clientSecret: string;
@@ -544,12 +559,13 @@ function readClaimString(profile: unknown, claim: string): string | undefined {
 
 // Resolved once: each builder logs when it finds nothing, and betterAuth and
 // ENABLED_SOCIAL_PROVIDERS must be built from the same answer.
+const GOOGLE_PROVIDER = googleProvider();
 const GITHUB_PROVIDER = githubProvider();
 const MICROSOFT_PROVIDER = microsoftProvider();
 
 function resolveEnabledSocialProviders(): SocialProviderId[] {
-    // Google's credentials are required by env validation, so it is always available.
-    const providers: SocialProviderId[] = ["google"];
+    const providers: SocialProviderId[] = [];
+    if (GOOGLE_PROVIDER != null) providers.push("google");
     if (GITHUB_PROVIDER != null) providers.push("github");
     if (MICROSOFT_PROVIDER != null) providers.push("microsoft");
     return providers;
@@ -718,9 +734,9 @@ export function buildAuth({ redisClient, conn, platformEvents: injectedPlatformE
             errorURL: `${APP_URL}/login/workspace-required`,
         },
         socialProviders: {
-            google: {
-                clientId: env.GOOGLE_CLIENT_ID,
-                clientSecret: env.GOOGLE_CLIENT_SECRET,
+            google: GOOGLE_PROVIDER == null ? undefined : {
+                clientId: GOOGLE_PROVIDER.clientId,
+                clientSecret: GOOGLE_PROVIDER.clientSecret,
                 scope: ["openid", "email", "profile"],
                 getUserInfo: async (token) => {
                     if (token.idToken == null) return null;
