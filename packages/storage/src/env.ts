@@ -7,6 +7,7 @@ export const env = createEnv({
         S3_REGION: z.string().min(1),
         S3_ENDPOINT: z.string().url().optional(),
         S3_FORCE_PATH_STYLE: z.stringbool().default(false),
+        S3_RESPONSE_CONTENT_TYPE_OVERRIDE: z.stringbool().default(true),
         // Optional so a host can leave credential resolution to the SDK's default chain instead: in
         // EKS the pod assumes its ServiceAccount's role (IRSA), locally these come from .env. Both
         // or neither - one without the other is treated as absent.

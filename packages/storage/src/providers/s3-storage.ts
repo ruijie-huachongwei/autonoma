@@ -20,6 +20,8 @@ export interface S3StorageConfig {
     endpoint?: string;
     /** Defaults to true for explicitly configured endpoints to preserve local provider behavior. */
     forcePathStyle?: boolean;
+    /** Disable when the provider rejects response-content-type on presigned GET requests. */
+    responseContentTypeOverride?: boolean;
 }
 
 export class ObjectNotFoundError extends Error {
@@ -75,6 +77,7 @@ export class S3Storage implements StorageProvider {
             region: env.S3_REGION,
             endpoint: env.S3_ENDPOINT,
             forcePathStyle: env.S3_FORCE_PATH_STYLE,
+            responseContentTypeOverride: env.S3_RESPONSE_CONTENT_TYPE_OVERRIDE,
             accessKeyId: env.S3_ACCESS_KEY_ID,
             secretAccessKey: env.S3_SECRET_ACCESS_KEY,
         });
@@ -123,11 +126,12 @@ export class S3Storage implements StorageProvider {
     private getObjectCommand(urlOrKey: string, responseContentType?: string) {
         const key = stripProtocolIfPresent(urlOrKey);
         const strippedKey = stripBucket(key, this.config.bucket);
+        const supportsResponseContentTypeOverride = this.config.responseContentTypeOverride ?? true;
 
         return new GetObjectCommand({
             Bucket: this.config.bucket,
             Key: strippedKey,
-            ResponseContentType: responseContentType,
+            ResponseContentType: supportsResponseContentTypeOverride ? responseContentType : undefined,
         });
     }
 
