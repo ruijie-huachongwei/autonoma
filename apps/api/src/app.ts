@@ -18,7 +18,6 @@ import { casConfiguration } from "./enterprise-auth/cas/cas-configuration";
 import { casHttpRouter } from "./enterprise-auth/cas/cas-http.router";
 import { env } from "./env";
 import { githubHttpRouter } from "./github/github-http.router";
-import { gitlabHttpRouter } from "./gitlab/gitlab-http.router";
 import { llmProxyHttpRouter } from "./llm-proxy/llm-proxy-http.router";
 import { mcpHttpRouter } from "./mcp/mcp-http.router";
 import { createPostHogProxyRouter } from "./posthog/posthog-proxy.router";
@@ -31,7 +30,7 @@ import { vercelMarketplaceRouter } from "./vercel-marketplace/vercel-marketplace
 import { vercelWebhooksRouter } from "./vercel-marketplace/vercel-webhooks.router";
 
 const ALLOWED_ORIGINS = env.ALLOWED_ORIGINS;
-const BODY_LOG_BLOCKLIST_PATHS = new Set(["/v1/stripe/webhook", "/v1/vercel/webhooks", "/v1/gitlab/webhook"]);
+const BODY_LOG_BLOCKLIST_PATHS = new Set(["/v1/stripe/webhook", "/v1/vercel/webhooks"]);
 // Prefixes whose request bodies must never be logged. Unlike the exact-match set
 // above, these cover routes with dynamic path segments - secret values flow
 // through PUT /v1/previewkit/secrets/:applicationId/:app[/:key], and through
@@ -200,11 +199,7 @@ export function createApiApp() {
 
     // ─── GitHub ───────────────────────────────────────────────────────
 
-    if (env.SCM_PROVIDER === "github") {
-        app.route("/v1/github", githubHttpRouter);
-    } else {
-        app.route("/v1/gitlab", gitlabHttpRouter);
-    }
+    app.route("/v1/github", githubHttpRouter);
 
     // ─── LLM Proxy (planner CLI) ───────────────────────────────────────
     // The CLI points its OpenRouter provider here with its Autonoma API key;
