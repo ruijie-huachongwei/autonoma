@@ -68,13 +68,14 @@ OSS exposes an S3-compatible API, so every existing consumer can continue using 
 ```dotenv
 S3_BUCKET=autonoma-artifacts
 S3_REGION=cn-hangzhou
-S3_ENDPOINT=https://s3.oss-cn-hangzhou.aliyuncs.com
+S3_ENDPOINT=https://oss-cn-hangzhou.aliyuncs.com
 S3_FORCE_PATH_STYLE=false
+S3_RESPONSE_CONTENT_TYPE_OVERRIDE=false
 S3_ACCESS_KEY_ID=<oss-ram-access-key-id>
 S3_SECRET_ACCESS_KEY=<oss-ram-access-key-secret>
 ```
 
-The region and endpoint must match the bucket. For an application running in Alibaba Cloud in the same region, prefer the internal endpoint, for example `https://s3.oss-cn-hangzhou-internal.aliyuncs.com`. Keep the bucket private and grant its RAM identity only the object operations the application needs.
+The region and endpoint must match the bucket. For an application running in Alibaba Cloud in the same region, prefer the internal endpoint, for example `https://oss-cn-hangzhou-internal.aliyuncs.com`. Keep the bucket private and grant its RAM identity only the object operations the application needs. OSS rejects the AWS `response-content-type` override on presigned GET URLs, so disable it and rely on the Content-Type stored at upload time.
 
 The `S3_` prefix describes the protocol consumed by this package; the values above are OSS values, not AWS credentials. Node.js AWS SDK v3 uses Signature V4 and is supported by OSS. Stored locators remain `s3://<bucket>/<key>` so existing database rows and callers do not need migration.
 
@@ -103,6 +104,7 @@ When using `S3Storage.createFromEnv()`, the following variables are required and
 | `S3_REGION` | yes | AWS region |
 | `S3_ENDPOINT` | no | S3-compatible endpoint. Set this to the Alibaba Cloud OSS S3-compatible endpoint when using OSS |
 | `S3_FORCE_PATH_STYLE` | no | `false` by default. Keep false for OSS; set true for MinIO/MiniStack when required |
+| `S3_RESPONSE_CONTENT_TYPE_OVERRIDE` | no | `true` by default. Set false for OSS presigned GET URLs |
 | `S3_ACCESS_KEY_ID` | no | Static access key ID |
 | `S3_SECRET_ACCESS_KEY` | no | Static secret access key |
 

@@ -6,8 +6,9 @@ const clientConfigs = vi.hoisted<S3ClientModule.S3ClientConfig[]>(() => []);
 vi.mock("@aws-sdk/client-s3", async (importOriginal) => {
     const actual = await importOriginal<typeof S3ClientModule>();
 
-    class RecordingS3Client {
+    class RecordingS3Client extends actual.S3Client {
         constructor(config: S3ClientModule.S3ClientConfig) {
+            super(config);
             clientConfigs.push(config);
         }
     }
@@ -28,34 +29,40 @@ describe("S3Storage configuration", () => {
     });
 
     it("uses an OSS endpoint with virtual-host addressing", async () => {
-        vi.stubEnv("S3_ENDPOINT", "https://s3.oss-cn-hangzhou.aliyuncs.com");
+        vi.stubEnv("S3_ENDPOINT", "https://oss-cn-hangzhou.aliyuncs.com");
         vi.stubEnv("S3_FORCE_PATH_STYLE", "false");
+        vi.stubEnv("S3_RESPONSE_CONTENT_TYPE_OVERRIDE", "false");
         vi.stubEnv("S3_ACCESS_KEY_ID", "test-access-key");
         vi.stubEnv("S3_SECRET_ACCESS_KEY", "test-secret-key");
 
         const { S3Storage } = await import("../src/providers/s3-storage");
-        S3Storage.createFromEnv();
+        const storage = S3Storage.createFromEnv();
+        const signedUrl = await storage.getSignedUrl("screenshot.png", 60, "image/png");
 
         expect(clientConfigs).toEqual([
             expect.objectContaining({
                 region: "cn-hangzhou",
-                endpoint: "https://s3.oss-cn-hangzhou.aliyuncs.com",
+                endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
                 forcePathStyle: false,
-                credentials: {
+                credentials: expect.objectContaining({
                     accessKeyId: "test-access-key",
                     secretAccessKey: "test-secret-key",
-                },
+                }),
             }),
         ]);
+        expect(new URL(signedUrl).searchParams.has("response-content-type")).toBe(false);
     });
 
     it("preserves path-style addressing for an explicitly configured local endpoint", async () => {
         const { S3Storage } = await import("../src/providers/s3-storage");
-        new S3Storage({
+        const storage = new S3Storage({
             bucket: "test-bucket",
             region: "us-east-1",
             endpoint: "http://localhost:4566",
+            accessKeyId: "test-access-key",
+            secretAccessKey: "test-secret-key",
         });
+        const signedUrl = await storage.getSignedUrl("screenshot.png", 60, "image/png");
 
         expect(clientConfigs).toEqual([
             expect.objectContaining({
@@ -63,5 +70,6 @@ describe("S3Storage configuration", () => {
                 forcePathStyle: true,
             }),
         ]);
+        expect(new URL(signedUrl).searchParams.get("response-content-type")).toBe("image/png");
     });
 });
