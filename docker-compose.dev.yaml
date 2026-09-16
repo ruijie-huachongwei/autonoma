@@ -86,7 +86,7 @@ services:
   api:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && pnpm install && pnpm run db:generate && pnpm run api"
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm run db:generate && pnpm run api"
     ports:
       - "4000:4000"
     env_file: .env
@@ -99,6 +99,18 @@ services:
     volumes:
       - .:/app
       - node_modules:/app/node_modules
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     depends_on:
       postgresql:
         condition: service_healthy
@@ -112,7 +124,7 @@ services:
   ui:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && pnpm install && pnpm run ui -- --host 0.0.0.0"
+    command: sh -c "corepack enable && pnpm run ui -- --host 0.0.0.0"
     ports:
       - "3000:3000"
     env_file: .env
@@ -123,7 +135,8 @@ services:
       - .:/app
       - node_modules:/app/node_modules
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
