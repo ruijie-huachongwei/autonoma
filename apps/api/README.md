@@ -112,9 +112,13 @@ Defined in `src/env.ts` using `@t3-oss/env-core` with Zod validation. Also exten
 | `AGENT_VERSION`                             | No       | `latest`                   | Version tag for Temporal worker agent images                                                                                                                                                                                                                                                           |
 | `POSTHOG_KEY`                               | No       | -                          | PostHog API key (analytics disabled if absent)                                                                                                                                                                                                                                                         |
 | `POSTHOG_HOST`                              | No       | `https://us.i.posthog.com` | PostHog ingest host                                                                                                                                                                                                                                                                                    |
-| `LLM_PROXY_ENABLED`                         | No       | `false`                    | Master switch for the managed LLM proxy (`/v1/llm-proxy`, planner CLI). Mounted only when this AND `STRIPE_ENABLED` are true.                                                                                                                                                                          |
-| `OPENROUTER_API_KEY`                        | No       | -                          | Server-side OpenRouter key the LLM proxy forwards with. Required for the proxy (`503` without it).                                                                                                                                                                                                     |
-| `LLM_PROXY_ALLOWED_MODELS`                  | No       | planner model              | Comma-separated allowlist of models the proxy may route. Defaults to `google/gemini-3-flash-preview`.                                                                                                                                                                                                  |
+| `LLM_PROXY_ENABLED`                         | No       | `false`                    | Master switch for the planner LLM proxy (`/v1/llm-proxy`). With Stripe enabled it uses metered OpenRouter; with Stripe disabled it requires the OpenAI-compatible variables below.                                                                                                                     |
+| `OPENROUTER_API_KEY`                        | With proxy + Stripe | -                    | Server-side OpenRouter key used by the billed proxy mode. An enabled proxy returns `503` when the selected upstream is incomplete.                                                                                                                                                                    |
+| `AI_PROVIDER`                               | No       | `builtin`                  | Set to `openai-compatible` to use the private gateway for the planner proxy when Stripe is disabled.                                                                                                                                                                                                  |
+| `AI_COMPATIBLE_BASE_URL`                    | With proxy, no Stripe | -                  | Private OpenAI-compatible API base URL including its API prefix, usually `/v1`.                                                                                                                                                                                                                        |
+| `AI_COMPATIBLE_API_KEY`                     | With proxy, no Stripe | -                  | Bearer token sent only from the API server to the private compatible gateway.                                                                                                                                                                                                                          |
+| `AI_COMPATIBLE_MODEL`                       | With proxy, no Stripe | -                  | Upstream model used for Planner requests in private compatible mode.                                                                                                                                                                                                                                   |
+| `LLM_PROXY_ALLOWED_MODELS`                  | No       | planner model              | Comma-separated allowlist of Planner-facing model ids. Defaults to `google/gemini-3-flash-preview`; private compatible mode rewrites accepted requests to `AI_COMPATIBLE_MODEL`.                                                                                                                       |
 | `LLM_PROXY_FREE_CREDIT_CAP`                 | No       | `20000`                    | Max credits a never-paid org may spend through the proxy, out of its free-start grant. Credits the org has paid for (top-up purchases + subscription grants, net of refunds) raise the budget; an active subscription lifts it. Abuse guard against farmed free accounts draining credits via the CLI. |
 | `LLM_PROXY_MAX_OUTPUT_TOKENS`               | No       | `32768`                    | Per-request `max_tokens` ceiling. The proxy clamps (and defaults) each request to this so an allowlisted model can't be driven with an unbounded generation.                                                                                                                                           |
 | `LLM_PROXY_MAX_REQUEST_BYTES`               | No       | `16000000`                 | Per-request body-size ceiling (bytes). Sized to comfortably fit a full ~1M-token context-window request (which the planner legitimately builds) plus JSON/UTF-8 overhead; only blocks payloads several times the model's own limit. Oversized payloads are rejected with `413`.                        |
@@ -180,32 +184,34 @@ application's onboarding, a user is watching a read-only config screen, so the w
 down when the user takes over). On an application nobody is configuring, the same tool just runs.
 `isAgentDrivenApplication` (`routes/onboarding/agent-session-liveness.ts`) holds the rule.
 
-### Managed LLM proxy (`/v1/llm-proxy`)
+### Planner LLM proxy (`/v1/llm-proxy`)
 
-The planner CLI (`@autonoma-ai/planner`) runs on managed Autonoma credits instead of a
-user-supplied OpenRouter key. It points its OpenRouter AI-SDK provider at
+The planner CLI (`@autonoma-ai/planner`) sends model requests through one authenticated API route. It points its OpenRouter AI-SDK provider at
 `${AUTONOMA_API_URL}/v1/llm-proxy` and authenticates with its Autonoma API token (same
 `requireApiKey` path as `/v1/setup`).
 
 The route is gated on `LLM_PROXY_ENABLED` (default `false`) so it is never an accidental
-unmetered gateway - it is only mounted where explicitly enabled. Metering requires
-`STRIPE_ENABLED=true`; when the proxy is enabled with billing off (e.g. a test environment)
-requests are served but **not** metered and a startup warning is logged. The proxy:
+gateway - it is only mounted where explicitly enabled. Its upstream is selected once at startup:
+
+- With `STRIPE_ENABLED=true`, it requires `OPENROUTER_API_KEY`, forwards to OpenRouter, and meters organization credits.
+- With `STRIPE_ENABLED=false`, it requires `AI_PROVIDER=openai-compatible` plus `AI_COMPATIBLE_BASE_URL`, `AI_COMPATIBLE_API_KEY`, and `AI_COMPATIBLE_MODEL`. It forwards to that private gateway without applying Autonoma billing.
+- If the selected mode is incomplete, authenticated requests fail closed with `503 llm_proxy_unconfigured`.
+
+The proxy:
 
 1. Bounds the raw request body to `LLM_PROXY_MAX_REQUEST_BYTES` (`413 request_too_large` otherwise).
-2. Enforces a model allowlist (`LLM_PROXY_ALLOWED_MODELS`, default = the single model the planner uses, `google/gemini-3-flash-preview`).
-3. Runs the credit gate (`checkLlmProxyGate`, all refusals are `402` so the CLI surfaces a billing hint):
+2. Enforces a Planner-facing model allowlist (`LLM_PROXY_ALLOWED_MODELS`, default = the single model the planner uses, `google/gemini-3-flash-preview`). Private compatible mode then rewrites the accepted model to `AI_COMPATIBLE_MODEL`.
+3. In billed OpenRouter mode, runs the credit gate (`checkLlmProxyGate`, all refusals are `402` so the CLI surfaces a billing hint):
     - `out_of_credits` - the wallet is empty.
     - `grace_period_expired` - subscription payment overdue.
     - `free_cli_limit_reached` - a never-paid org has spent its free CLI allowance (`LLM_PROXY_FREE_CREDIT_CAP`, default 20k of the 100k free-start grant). Credits the org has paid for (top-up purchases + subscription grants, net of refunds) raise the budget one-for-one, so a paying/formerly-paying org is never blocked at the free cap; an active subscription lifts the cap outright. This is the primary abuse bound: a farmed free account can drain at most the cap through the CLI, regardless of concurrency.
 4. Clamps `max_tokens` to `LLM_PROXY_MAX_OUTPUT_TOKENS` (and sets it when omitted) so a single request stays cheap - keeping any overspend past the cap under concurrency negligible.
-5. Forwards `chat/completions` to OpenRouter with the server `OPENROUTER_API_KEY`, streaming the
-   response back unchanged.
-6. Meters the dollar cost OpenRouter reports (usage accounting) into credits at the top-up rate and
+5. Forwards `chat/completions` to the selected upstream, streaming the response back unchanged.
+6. In billed OpenRouter mode, meters the dollar cost OpenRouter reports into credits at the top-up rate and
    deducts from `BillingCustomer.creditBalance`, recording a `LLM_PROXY_CONSUMPTION` transaction
    (idempotent on the OpenRouter generation id). Surfaced in the billing UI as "AI CLI usage".
 
-Returns `503` when `OPENROUTER_API_KEY` is unset.
+Private compatible mode does not call the billing gate or create billing transactions.
 
 **Known limitation (concurrency):** the balance gate and the deduction are separate reads, so an
 org near zero balance that fires N concurrent requests can have all N served (each costing real

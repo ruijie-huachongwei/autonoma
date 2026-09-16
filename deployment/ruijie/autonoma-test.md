@@ -92,16 +92,18 @@ __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=autonoma-test.ruijie.com.cn
 
 # API 启动时强制校验。这里仍使用 S3_ 前缀，因为代码通过 OSS 的
 # S3 兼容协议访问；值必须来自阿里云 OSS/RAM，不能填写 AWS 凭据。
-S3_BUCKET=<oss-bucket-name>
-S3_REGION=<oss-region，例如 cn-hangzhou>
-S3_ENDPOINT=<例如 https://s3.oss-cn-hangzhou.aliyuncs.com>
+S3_BUCKET=tianshu20-dev
+S3_REGION=cn-beijing
+S3_ENDPOINT=https://oss-cn-beijing.aliyuncs.com
 S3_FORCE_PATH_STYLE=false
+S3_RESPONSE_CONTENT_TYPE_OVERRIDE=false
 S3_ACCESS_KEY_ID=<oss-ram-access-key-id>
 S3_SECRET_ACCESS_KEY=<oss-ram-access-key-secret>
 
 # 第一阶段只做 CAS 和控制面联调时使用仓库内的 GitHub 假实现。
 LOCAL_DEV=true
 STRIPE_ENABLED=false
+LLM_PROXY_ENABLED=true
 PREVIEWKIT_ENV=false
 ```
 
@@ -117,16 +119,18 @@ chmod 600 .env
 
 ### 阿里云 OSS 准备
 
-1. 创建私有 bucket，地域与 `S3_REGION` 保持一致。
+1. 确认私有 bucket `tianshu20-dev` 位于北京地域 `cn-beijing`。
 2. 创建独立 RAM 用户或角色，只授权该 bucket 的对象上传、下载、删除和分片上传操作，不使用主账号 AccessKey。
-3. 如果应用运行在同地域阿里云 VPC，优先使用内网地址，例如 `https://s3.oss-cn-hangzhou-internal.aliyuncs.com`；否则使用 S3 兼容公网地址，例如 `https://s3.oss-cn-hangzhou.aliyuncs.com`。
-4. `S3_FORCE_PATH_STYLE` 保持 `false`，bucket 名称应符合 DNS 命名要求。
+3. 当前部署使用公网 S3 兼容地址 `https://oss-cn-beijing.aliyuncs.com`。如果应用以后迁入北京地域阿里云 VPC，可改为 `https://oss-cn-beijing-internal.aliyuncs.com`。
+4. `S3_FORCE_PATH_STYLE` 和 `S3_RESPONSE_CONTENT_TYPE_OVERRIDE` 均保持 `false`。OSS 不接受 AWS 签名 URL 的 `response-content-type` 覆盖参数，Autonoma 会使用上传对象自身保存的 Content-Type。
 5. 如浏览器需要跨域读取签名 URL，在 OSS bucket CORS 中允许 `https://autonoma-test.ruijie.com.cn` 的 `GET`、`HEAD` 请求及业务实际需要的响应头。
 6. 确保服务器启用 NTP。签名请求的服务器时间偏差过大会导致 `SignatureDoesNotMatch`。
 
 阿里云自 2025-03-20 起限制中国内地部分新用户通过默认公网域名调用数据 API。如果当前账号受该策略影响，需要按 OSS 控制台提示绑定自定义域名和 HTTPS 证书，并在上线前完成真实上传、下载和签名 URL 验证。
 
 本配置会替换 API、Web/Mobile engine 和 diffs worker 通过 `@autonoma/storage` 发起的制品读写。Previewkit 的 PostgreSQL `restore_from` 是每个预览环境单独声明的备份来源，目前仍使用它自己的 S3 配置，不读取这里的全局 OSS endpoint。
+
+本次使用新空桶，不需要迁移历史 S3 制品。
 
 ### 完整 GitHub/PR 能力
 
@@ -156,7 +160,9 @@ AI_COMPATIBLE_API_KEY=<网关密钥>
 AI_COMPATIBLE_MODEL=<支持视觉、结构化输出和工具调用的模型 ID>
 ```
 
-如单个模型不能覆盖全部能力，可再配置 `AI_COMPATIBLE_FAST_VISUAL_MODEL`、`AI_COMPATIBLE_SMART_VISUAL_MODEL`、`AI_COMPATIBLE_FAST_TEXT_MODEL` 和 `AI_COMPATIBLE_POINTER_MODEL`。这些变量必须注入实际执行 web/mobile 测试的 worker，不能只配置在 API 容器。
+在当前 `STRIPE_ENABLED=false` 的自托管环境中，`LLM_PROXY_ENABLED=true` 会让 Planner 的单个 `/v1/llm-proxy` 路由复用上述 compatible 网关，并将 Planner 请求的模型映射为 `AI_COMPATIBLE_MODEL`。因此 `AI_PROVIDER`、`AI_COMPATIBLE_BASE_URL`、`AI_COMPATIBLE_API_KEY` 和 `AI_COMPATIBLE_MODEL` 必须同时注入 API 容器和实际执行 web/mobile 测试的 worker。该模式不执行 Stripe 额度检查，也不写入 LLM 代理消费记录。
+
+如单个模型不能覆盖全部能力，可再配置 `AI_COMPATIBLE_FAST_VISUAL_MODEL`、`AI_COMPATIBLE_SMART_VISUAL_MODEL`、`AI_COMPATIBLE_FAST_TEXT_MODEL` 和 `AI_COMPATIBLE_POINTER_MODEL`。这些按能力划分的变量只供实际执行 web/mobile 测试的 worker 使用；Planner 代理使用 `AI_COMPATIBLE_MODEL`。
 
 ## 5. CAS 配套配置
 
@@ -167,7 +173,19 @@ CAS_IDENTITY_EXCHANGE_SECRET=<与 Autonoma 完全相同的值>
 AUTONOMA_CAS_CALLBACK_URL=https://autonoma-test.ruijie.com.cn/v1/enterprise-auth/cas/callback
 ```
 
-同时在 CAS/SID 服务端登记该 HTTPS callback。Autonoma 登录时会在 callback 上增加动态 `state` 查询参数，服务白名单需要允许这一合法查询参数。
+同时必须由 SID 管理员在统一身份认证平台创建或启用 Autonoma 测试应用，并登记以下 HTTPS service 基地址：
+
+```text
+https://autonoma-test.ruijie.com.cn/v1/enterprise-auth/cas/callback
+```
+
+Autonoma 每次登录都会在 service 后增加随机 `state` 查询参数，例如：
+
+```text
+https://autonoma-test.ruijie.com.cn/v1/enterprise-auth/cas/callback?state=<random-uuid>
+```
+
+SID 的 service 白名单必须按 URL 基地址或允许查询参数的方式匹配，不能要求整条带 `state` 的 URL 逐字固定。仅配置 `tianshu-manager-service` 的 `AUTONOMA_CAS_CALLBACK_URL` 不会自动在 SID 创建应用。SID 显示“应用未对接认证服务”或在回调发生前显示“登录请求存在异常”，说明请求仍被 SID 的应用/service 校验拒绝，应先由 SID 管理员完成登记；此时无需排查 Autonoma 的 Redis state 或交换密钥。
 
 API 容器必须能访问：
 
@@ -269,6 +287,36 @@ docker compose -f docker-compose.dev.yaml exec edge nginx -t
 docker compose -f docker-compose.dev.yaml logs --tail=100 edge
 ```
 
+替换或续期证书后，Nginx 不会自动重新读取文件，必须重启 `edge`。先比较宿主机证书和 443 实际返回证书的 SHA-256 指纹：
+
+```bash
+openssl x509 -in /etc/autonoma/tls/fullchain.pem -noout \
+  -subject -issuer -dates -ext subjectAltName -fingerprint -sha256
+
+openssl s_client -connect 127.0.0.1:443 \
+  -servername autonoma-test.ruijie.com.cn </dev/null 2>/dev/null | \
+  openssl x509 -noout -subject -issuer -dates -ext subjectAltName -fingerprint -sha256
+```
+
+两个指纹必须相同，SAN 必须包含 `autonoma-test.ruijie.com.cn`。如果不同，确认 Compose 实际挂载路径并重建入口容器：
+
+```bash
+docker inspect "$(docker compose -f docker-compose.dev.yaml ps -q edge)" \
+  --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
+docker compose -f docker-compose.dev.yaml --profile server \
+  up -d --force-recreate edge
+```
+
+最后验证完整证书链，不得使用 `-k` 绕过校验：
+
+```bash
+openssl s_client -connect autonoma-test.ruijie.com.cn:443 \
+  -servername autonoma-test.ruijie.com.cn -verify_return_error </dev/null
+curl --fail --show-error https://autonoma-test.ruijie.com.cn/health
+```
+
+`fullchain.pem` 必须依次包含站点证书和中间证书，不能只放站点证书；`privkey.pem` 必须与站点证书匹配。若使用 Let's Encrypt 的 `live/` 目录，其文件通常是指向 `archive/` 的符号链接，不要只挂载 `live/` 子目录，应按本手册复制为 `/etc/autonoma/tls` 下的普通文件，或同时挂载完整 `/etc/letsencrypt`。
+
 不要使用自签名证书完成最终验收。不要让 `/v1` 进入 SPA fallback，也不要让 `/health` 返回 HTML；两者必须由 `edge` 直接转发到 API。
 
 ## 8. 上线验收
@@ -297,6 +345,8 @@ curl --fail --show-error --head https://autonoma-test.ruijie.com.cn/
 5. 检查 API 日志中出现 `CAS sign-in completed`，且没有记录 ticket、共享密钥或会话令牌。
 
 如果失败，按顺序检查公网 callback、Redis 中的短期 state、manager-service 交换接口、两个服务的共享密钥是否一致。
+
+若浏览器停留在 `https://sid.ruijie.com.cn/login?...` 且 Network 中没有请求 Autonoma 的 `/v1/enterprise-auth/cas/callback`，失败发生在 SID，先检查 SID 应用是否启用以及 service 白名单。只有浏览器已经请求 callback 后，才继续检查 Redis state、`tianshu-manager-service` 和交换密钥。
 
 ### 8.3 基础设施
 

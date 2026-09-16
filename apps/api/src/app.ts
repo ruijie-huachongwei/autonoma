@@ -18,6 +18,7 @@ import { casConfiguration } from "./enterprise-auth/cas/cas-configuration";
 import { casHttpRouter } from "./enterprise-auth/cas/cas-http.router";
 import { env } from "./env";
 import { githubHttpRouter } from "./github/github-http.router";
+import { gitlabHttpRouter } from "./gitlab/gitlab-http.router";
 import { llmProxyHttpRouter } from "./llm-proxy/llm-proxy-http.router";
 import { mcpHttpRouter } from "./mcp/mcp-http.router";
 import { createPostHogProxyRouter } from "./posthog/posthog-proxy.router";
@@ -30,7 +31,7 @@ import { vercelMarketplaceRouter } from "./vercel-marketplace/vercel-marketplace
 import { vercelWebhooksRouter } from "./vercel-marketplace/vercel-webhooks.router";
 
 const ALLOWED_ORIGINS = env.ALLOWED_ORIGINS;
-const BODY_LOG_BLOCKLIST_PATHS = new Set(["/v1/stripe/webhook", "/v1/vercel/webhooks"]);
+const BODY_LOG_BLOCKLIST_PATHS = new Set(["/v1/stripe/webhook", "/v1/vercel/webhooks", "/v1/gitlab/webhook"]);
 // Prefixes whose request bodies must never be logged. Unlike the exact-match set
 // above, these cover routes with dynamic path segments - secret values flow
 // through PUT /v1/previewkit/secrets/:applicationId/:app[/:key], and through
@@ -199,22 +200,20 @@ export function createApiApp() {
 
     // ─── GitHub ───────────────────────────────────────────────────────
 
-    app.route("/v1/github", githubHttpRouter);
+    if (env.SCM_PROVIDER === "github") {
+        app.route("/v1/github", githubHttpRouter);
+    } else {
+        app.route("/v1/gitlab", gitlabHttpRouter);
+    }
 
-    // ─── LLM Proxy (planner CLI managed credits) ───────────────────────
+    // ─── LLM Proxy (planner CLI) ───────────────────────────────────────
     // The CLI points its OpenRouter provider here with its Autonoma API key;
-    // the proxy forwards to OpenRouter with our key and meters credits. No CORS
-    // mount - the caller is the CLI, not a browser. Mounted only when explicitly
-    // enabled AND billing is on: metering depends on billing, so requiring both
-    // makes "the proxy is always metered" an invariant and fails closed - a
-    // billing-disabled environment can never become a free, unmetered gateway.
+    // the proxy uses metered OpenRouter in billing environments or a configured
+    // private OpenAI-compatible gateway in billing-disabled deployments. No CORS
+    // mount - the caller is the CLI, not a browser.
 
-    if (env.LLM_PROXY_ENABLED && env.STRIPE_ENABLED) {
+    if (env.LLM_PROXY_ENABLED) {
         app.route("/v1/llm-proxy", llmProxyHttpRouter);
-    } else if (env.LLM_PROXY_ENABLED && !env.STRIPE_ENABLED) {
-        logger.error(
-            "LLM proxy NOT mounted: LLM_PROXY_ENABLED=true but STRIPE_ENABLED=false. Enable billing so usage can be metered.",
-        );
     } else {
         logger.info("LLM proxy routes disabled (LLM_PROXY_ENABLED=false)");
     }

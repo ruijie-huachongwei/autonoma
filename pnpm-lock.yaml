@@ -333,6 +333,9 @@ importers:
       '@autonoma/agent-guidance':
         specifier: workspace:*
         version: link:../../packages/agent-guidance
+      '@autonoma/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@autonoma/analysis':
         specifier: workspace:*
         version: link:../../packages/analysis

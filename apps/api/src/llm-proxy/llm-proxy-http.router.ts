@@ -1,3 +1,4 @@
+import { env as aiEnv } from "@autonoma/ai/env";
 import { requireApiKey, type UserAuthVariables } from "@autonoma/auth";
 import type { LlmProxyGateReason } from "@autonoma/billing";
 import { db } from "@autonoma/db";
@@ -7,20 +8,19 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { billingService } from "../context";
 import { env } from "../env";
+import { resolveLlmProxyUpstream } from "./resolve-llm-proxy-upstream";
 
 const logger = rootLogger.child({ name: "llmProxyHttpRouter" });
-
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // Upper bound on a single upstream request. Bounds a hung/stalled OpenRouter
 // connection (which would otherwise hold the request and the detached meter
 // drain open indefinitely) while staying well above any real planner call.
 const UPSTREAM_TIMEOUT_MS = 300_000;
 
-// Default allowlist - the only model the planner CLI uses. The proxy is a free,
-// credit-metered gateway, so restricting the routable models is the main guard
-// against it being used as a general-purpose LLM API. Override with the
-// LLM_PROXY_ALLOWED_MODELS env var (comma-separated) without a deploy.
+// Default allowlist - the only model id the planner CLI sends. Restricting the
+// accepted ids prevents the authenticated route from becoming a general-purpose
+// LLM API. Private compatible mode rewrites this id to its configured model.
+// Override with LLM_PROXY_ALLOWED_MODELS (comma-separated) without a deploy.
 const LLM_PROXY_DEFAULT_MODELS = ["google/gemini-3-flash-preview"];
 
 const configuredModels =
@@ -31,12 +31,19 @@ const configuredModels =
 // silently blocking every model with a 400.
 const allowedModels = new Set(configuredModels.length > 0 ? configuredModels : LLM_PROXY_DEFAULT_MODELS);
 
-// Per-request caps (all env-overridable). The credit cap is the primary abuse
-// bound (see checkLlmProxyGate); these keep a single request cheap so the tiny
-// overspend past the cap under concurrency stays negligible.
+// Per-request caps (all env-overridable). In billed mode the credit cap is the
+// primary abuse bound; these also constrain individual requests in both modes.
 const FREE_CLI_CREDIT_CAP = env.LLM_PROXY_FREE_CREDIT_CAP;
 const MAX_OUTPUT_TOKENS = env.LLM_PROXY_MAX_OUTPUT_TOKENS;
 const MAX_REQUEST_BYTES = env.LLM_PROXY_MAX_REQUEST_BYTES;
+const upstreamConfiguration = resolveLlmProxyUpstream({
+    stripeEnabled: env.STRIPE_ENABLED,
+    openRouterApiKey: aiEnv.OPENROUTER_API_KEY,
+    aiProvider: aiEnv.AI_PROVIDER,
+    compatibleBaseUrl: aiEnv.AI_COMPATIBLE_BASE_URL,
+    compatibleApiKey: aiEnv.AI_COMPATIBLE_API_KEY,
+    compatibleModel: aiEnv.AI_COMPATIBLE_MODEL,
+});
 
 // Every gate refusal is a 402 so the planner CLI's error handling (which keys
 // friendly "out of credits" messaging off the 402 status) surfaces the right
@@ -118,9 +125,10 @@ llmProxyHttpRouter.post("/chat/completions", async (c) => {
     const { organizationId } = c.var.user;
     logger.info("LLM proxy request received", { organizationId });
 
-    const apiKey = env.OPENROUTER_API_KEY;
-    if (apiKey == null) {
-        logger.error("LLM proxy is unconfigured - OPENROUTER_API_KEY is not set");
+    if (upstreamConfiguration == null) {
+        logger.error("LLM proxy is unconfigured", {
+            extra: { stripeEnabled: env.STRIPE_ENABLED, aiProvider: aiEnv.AI_PROVIDER },
+        });
         return c.json({ error: "llm_proxy_unconfigured" }, 503);
     }
 
@@ -137,10 +145,12 @@ llmProxyHttpRouter.post("/chat/completions", async (c) => {
         return c.json({ error: "model_not_allowed", model }, 400);
     }
 
-    const gate = await billingService.checkLlmProxyGate(organizationId, FREE_CLI_CREDIT_CAP);
-    if (!gate.allowed) {
-        logger.info("LLM proxy request blocked", { organizationId, reason: gate.reason });
-        return c.json(GATE_BLOCK_RESPONSES[gate.reason], 402);
+    if (upstreamConfiguration.metered) {
+        const gate = await billingService.checkLlmProxyGate(organizationId, FREE_CLI_CREDIT_CAP);
+        if (!gate.allowed) {
+            logger.info("LLM proxy request blocked", { organizationId, reason: gate.reason });
+            return c.json(GATE_BLOCK_RESPONSES[gate.reason], 402);
+        }
     }
 
     const isStreaming = parsedBody.data.stream === true;
@@ -149,20 +159,30 @@ llmProxyHttpRouter.post("/chat/completions", async (c) => {
     // OpenRouter to include usage accounting (incl. dollar cost) so we can meter -
     // for streams this surfaces in a trailing chunk; non-stream in the body.
     const maxTokens = Math.min(parsedBody.data.max_tokens ?? MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS);
-    const forwardBody = { ...parsedBody.data, max_tokens: maxTokens, usage: { include: true } };
+    const upstreamModel = upstreamConfiguration.kind === "openai-compatible" ? upstreamConfiguration.model : model;
+    const boundedBody = { ...parsedBody.data, model: upstreamModel, max_tokens: maxTokens };
+    const forwardBody = upstreamConfiguration.metered ? { ...boundedBody, usage: { include: true } } : boundedBody;
 
-    logger.info("Forwarding to OpenRouter", { organizationId, model, isStreaming });
+    logger.info("Forwarding LLM proxy request", {
+        organizationId,
+        model,
+        isStreaming,
+        extra: { upstream: upstreamConfiguration.kind, upstreamModel },
+    });
 
     let upstream: Response;
     try {
-        upstream = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+        const headers = new Headers({
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${upstreamConfiguration.apiKey}`,
+        });
+        if (upstreamConfiguration.kind === "openrouter") {
+            headers.set("HTTP-Referer", "https://autonoma.app");
+            headers.set("X-Title", "Autonoma Planner");
+        }
+        upstream = await fetch(upstreamConfiguration.url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
-                "HTTP-Referer": "https://autonoma.app",
-                "X-Title": "Autonoma Planner",
-            },
+            headers,
             body: JSON.stringify(forwardBody),
             signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         });
@@ -174,14 +194,30 @@ llmProxyHttpRouter.post("/chat/completions", async (c) => {
     }
 
     if (!upstream.ok || upstream.body == null) {
-        // Don't leak OpenRouter's identity or our account's auth/rate-limit state
+        // Don't leak the upstream's identity or our account's auth/rate-limit state
         // to the caller - log the upstream detail server-side, return a generic 502.
         const detail = await upstream.text().catch(() => "");
-        logger.warn("OpenRouter returned an error", { organizationId, model, status: upstream.status, detail });
+        logger.warn("LLM proxy upstream returned an error", {
+            organizationId,
+            model,
+            status: upstream.status,
+            detail,
+            extra: { upstream: upstreamConfiguration.kind },
+        });
         return c.json({ error: "upstream_error" }, 502);
     }
 
     if (isStreaming) {
+        if (!upstreamConfiguration.metered) {
+            return new Response(upstream.body, {
+                status: upstream.status,
+                headers: {
+                    "Content-Type": upstream.headers.get("content-type") ?? "text/event-stream",
+                    "Cache-Control": "no-cache, no-transform",
+                    "X-Accel-Buffering": "no",
+                },
+            });
+        }
         // Tee the upstream stream: one branch streams to the client, the other we
         // drain ourselves for metering. Draining the meter branch independently
         // means we still capture usage (and bill) even if the client disconnects
@@ -199,6 +235,12 @@ llmProxyHttpRouter.post("/chat/completions", async (c) => {
     }
 
     const rawText = await upstream.text();
+    if (!upstreamConfiguration.metered) {
+        return new Response(rawText, {
+            status: upstream.status,
+            headers: { "Content-Type": upstream.headers.get("content-type") ?? "application/json" },
+        });
+    }
     const parsed = UsageEnvelopeSchema.safeParse(safeJsonParse(rawText));
     await meter(organizationId, {
         id: parsed.success ? parsed.data.id : undefined,
@@ -273,7 +315,7 @@ function safeJsonParse(text: string): unknown {
     try {
         return JSON.parse(text);
     } catch (err) {
-        logger.debug("Failed to parse JSON from OpenRouter response", { err });
+        logger.debug("Failed to parse JSON from LLM proxy upstream response", { err });
         return undefined;
     }
 }

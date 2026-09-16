@@ -87,9 +87,9 @@ The API server extends the database, storage, logger, and billing environments, 
 | `AGENT_VERSION` | No | `latest` | Version tag for the execution agent. Used when dispatching engine jobs. |
 | `POSTHOG_KEY` | No | - | PostHog project API key for server-side analytics. Omit to disable analytics. |
 | `POSTHOG_HOST` | No | `https://us.i.posthog.com` | PostHog ingestion endpoint. Override for self-hosted PostHog instances. |
-| `OPENROUTER_API_KEY` | No | - | Server-side OpenRouter key the managed LLM proxy (`/v1/llm-proxy`, planner CLI) forwards requests with. The proxy returns `503` without it. |
-| `LLM_PROXY_ENABLED` | No | `false` | Master switch for the managed LLM proxy. The route mounts only when this and `STRIPE_ENABLED` are both `true`, so usage is always metered. |
-| `LLM_PROXY_ALLOWED_MODELS` | No | `google/gemini-3-flash-preview` | Comma-separated allowlist of OpenRouter model ids the proxy may route. Empty falls back to the default. |
+| `OPENROUTER_API_KEY` | With proxy + Stripe | - | Server-side OpenRouter key used by the billed planner proxy mode. The proxy returns `503` if the selected upstream is incomplete. |
+| `LLM_PROXY_ENABLED` | No | `false` | Explicitly mounts the planner LLM proxy. With Stripe enabled it uses metered OpenRouter; with Stripe disabled it requires the complete OpenAI-compatible configuration below. |
+| `LLM_PROXY_ALLOWED_MODELS` | No | `google/gemini-3-flash-preview` | Comma-separated allowlist of Planner-facing model ids. In private compatible mode accepted requests are rewritten to `AI_COMPATIBLE_MODEL`. Empty falls back to the default. |
 | `REDIS_URL` | Yes | - | Redis connection string (e.g., `redis://localhost:6379`). Used for device locking, caching, and pub/sub. |
 | `TESTING` | No | `false` | Set to `true` in test environments. Prevents importing certain modules. Not for general use. |
 | `ENGINE_BILLING_SECRET` | No | - | Shared secret for authenticating billing calls from the engine. |
@@ -131,7 +131,7 @@ For local development, a typical value is `postgresql://postgres:postgres@localh
 
 **Source:** `packages/ai/src/env.ts`
 
-The web and mobile execution engines support the built-in provider set or one OpenAI-compatible Chat Completions endpoint. The API server does not run test-execution inference itself, so it needs none of these values.
+The web and mobile execution engines support the built-in provider set or one OpenAI-compatible Chat Completions endpoint. The API server also reads this configuration when `LLM_PROXY_ENABLED=true` and `STRIPE_ENABLED=false`, allowing the Planner to reuse the private compatible gateway.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -158,7 +158,7 @@ AI_COMPATIBLE_MODEL=qwen2.5-vl-72b-instruct
 
 The selected endpoint must implement OpenAI-compatible `/chat/completions`. For full test execution, its models must accept image inputs, structured JSON output, and tool calls. Use the per-capability overrides when one model does not provide all three capabilities. Custom endpoint usage retains token telemetry, but its monetary cost is recorded as zero because Autonoma cannot infer private-provider pricing.
 
-This switch covers web/mobile test generation and execution. The diffs worker has separate analysis and video model settings documented by that worker.
+This switch covers web/mobile test generation and execution. For a self-hosted Planner proxy, inject `AI_PROVIDER`, `AI_COMPATIBLE_BASE_URL`, `AI_COMPATIBLE_API_KEY`, and `AI_COMPATIBLE_MODEL` into the API container too. The diffs worker has separate analysis and video model settings documented by that worker.
 
 :::note
 Validation is skipped when running in Vitest (`VITEST` env var is set), so you do not need these keys to run unit tests.
@@ -178,11 +178,12 @@ Used for storing screenshots, video recordings, test artifacts, and other binary
 | `S3_REGION` | Yes | - | Region of the bucket (e.g., `us-east-1` or `cn-hangzhou`). |
 | `S3_ENDPOINT` | No | AWS SDK default | S3-compatible endpoint. Set this to the OSS S3-compatible endpoint when using Alibaba Cloud OSS. |
 | `S3_FORCE_PATH_STYLE` | No | `false` | Keep `false` for AWS S3 and Alibaba Cloud OSS. Set `true` for local providers that require path-style URLs. |
+| `S3_RESPONSE_CONTENT_TYPE_OVERRIDE` | No | `true` | Set `false` for OSS because its S3-compatible presigned GET endpoint rejects response Content-Type overrides. |
 | `S3_ACCESS_KEY_ID` | No | AWS SDK credential chain | Static access key ID. For OSS, use a restricted RAM AccessKey ID. |
 | `S3_SECRET_ACCESS_KEY` | No | AWS SDK credential chain | Static secret access key. For OSS, use the matching RAM AccessKey Secret. |
 
 :::tip[Alibaba Cloud OSS]
-OSS exposes an S3-compatible API, so no separate OSS SDK is required. For a bucket in Hangzhou, use `S3_REGION=cn-hangzhou`, `S3_ENDPOINT=https://s3.oss-cn-hangzhou.aliyuncs.com`, and `S3_FORCE_PATH_STYLE=false`. If the application runs in the same Alibaba Cloud region, prefer the internal endpoint such as `https://s3.oss-cn-hangzhou-internal.aliyuncs.com`. The endpoint and region must match the bucket.
+OSS exposes an S3-compatible API, so no separate OSS SDK is required. For a bucket in Hangzhou, use `S3_REGION=cn-hangzhou`, `S3_ENDPOINT=https://oss-cn-hangzhou.aliyuncs.com`, `S3_FORCE_PATH_STYLE=false`, and `S3_RESPONSE_CONTENT_TYPE_OVERRIDE=false`. If the application runs in the same Alibaba Cloud region, prefer the internal endpoint such as `https://oss-cn-hangzhou-internal.aliyuncs.com`. The endpoint and region must match the bucket. With response overrides disabled, uploaded objects retain and serve their stored Content-Type metadata.
 
 The `S3_` variable names describe the protocol used by Autonoma. The credentials are Alibaba Cloud RAM credentials when OSS is the backend. Stored object locators remain in `s3://bucket/key` form for application compatibility.
 :::
