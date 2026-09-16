@@ -1,20 +1,11 @@
-import { isPreviewHostname } from "@autonoma/types";
 import { env } from "env";
 
 /**
- * The API origin for data-plane calls that must bypass CloudFront: the app
- * host (autonoma.app) sits behind CloudFront, whose WAF/buffering can 403 or
- * mangle request bodies (a large `apply_config` document, a password
- * containing characters that trip injection rules) and interfere with
- * streaming HTTP. `api.<app-host>` is direct to the ALB, off CloudFront.
- * Localhost and per-PR previews reach the API cross-origin at VITE_API_URL.
- * Session cookies and OAuth are unaffected by which origin the data plane
- * uses - crossSubDomainCookies covers both.
+ * The API origin for data-plane calls. Managed deployments configure their
+ * dedicated `api.*` host in VITE_API_URL, while self-hosted deployments may
+ * route API traffic through the application origin. Deriving a hostname here
+ * would invent an `api.*` DNS name that a custom deployment may not provide.
  */
 export function getApiOrigin(): string {
-    const hostname = window.location.hostname;
-    const internalDomain = env.VITE_INTERNAL_DOMAIN;
-    const isPreview = isPreviewHostname(hostname, internalDomain);
-    const isManagedDomain = hostname === internalDomain || hostname.endsWith(`.${internalDomain}`);
-    return isPreview || !isManagedDomain ? env.VITE_API_URL : `https://api.${hostname}`;
+    return env.VITE_API_URL;
 }
