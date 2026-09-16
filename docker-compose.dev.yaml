@@ -138,6 +138,39 @@ services:
       api:
         condition: service_healthy
 
+  # Remote test servers should serve the built SPA instead of exposing Vite's
+  # development-only /@fs routes through a corporate network or gateway.
+  ui-static:
+    profiles: ["server"]
+    image: autonoma-ui-static:local
+    build:
+      context: ./apps/ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      API_UPSTREAM: api:4000
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  edge:
+    profiles: ["server"]
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployment/ruijie/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${AUTONOMA_TLS_DIR:-/etc/autonoma/tls}:/etc/nginx/certs:ro
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      ui-static:
+        condition: service_started
+
 volumes:
   pgdata:
   redisdata:

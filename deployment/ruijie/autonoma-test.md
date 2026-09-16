@@ -12,7 +12,7 @@
 
 因此建议分两步实施：
 
-1. 使用 `docker-compose.dev.yaml` 完成内网测试环境、HTTPS 和 CAS 联调。
+1. 使用 `docker-compose.dev.yaml` 启动基础设施和 API，并使用其中的 `ui-static` profile 提供构建后的 UI，完成内网测试环境、HTTPS 和 CAS 联调。
 2. 联调通过后，再建设 CI 镜像和 Kubernetes worker 拓扑，作为长期运行环境。
 
 ## 2. 当前阻塞项
@@ -21,9 +21,9 @@
 
 | 检查项 | 当前结果 | 上线要求 |
 | --- | --- | --- |
-| DNS | `autonoma-test.ruijie.com.cn` 解析到 `172.16.22.64` | 保留该入口，或按实际网络方案调整 |
+| DNS | `autonoma-test.ruijie.com.cn` 解析到 `172.16.3.245` | 保持该记录，并确认客户端使用的 DNS 能解析到同一地址 |
 | 443 端口 | TCP 可访问 | 保持开放 |
-| 当前站点 | `/health` 返回另一个标题为“锐捷”的 SPA 页面，不是 Autonoma 的 `{"ok":true}` | 修改 `172.16.22.64` 上该域名的 Nginx/vhost 上游 |
+| 当前站点 | 部署完成后待验收 | `https://autonoma-test.ruijie.com.cn/health` 必须返回 Autonoma 的 `{"ok":true}` |
 | TLS | 当前证书链不能通过客户端信任校验 | 配置受信任证书及完整中间证书链，验收时不得使用 `-k` |
 | CAS 交换接口 | 无凭据请求返回 HTTP 500 | 部署并检查 manager-service 接口，使非法凭据返回明确的 4xx，并用真实 CAS ticket 联调 |
 
@@ -33,9 +33,9 @@
 
 ```mermaid
 flowchart LR
-    B[浏览器] -->|HTTPS 443| G[172.16.22.64 Nginx 网关]
-    G -->|页面和静态资源| U[应用服务器 UI 3000]
-    G -->|/v1 /health 等| A[应用服务器 API 4000]
+  B[浏览器] -->|HTTPS 443| G[172.16.3.245 edge container]
+  G -->|ui-static:3000| U[UI static]
+  G -->|api:4000| A[API]
     A --> P[(PostgreSQL 5432)]
     A --> R[(Redis 6379)]
     A --> T[Temporal 7233]
@@ -43,9 +43,9 @@ flowchart LR
     A --> C[tianshu-manager-service]
 ```
 
-如果应用服务器仍是 `192.168.85.164`，网关应把 UI 流量转发到 `192.168.85.164:3000`，把 API 路径转发到 `192.168.85.164:4000`。若服务器地址已经变化，替换为实际地址。
+DNS、Nginx、UI、API 和基础组件都位于 `172.16.3.245`。`edge`、`ui-static` 和 `api` 容器通过 Compose 默认网络及服务名通信，不需要宿主机安装 Nginx，也不需要另一台网关。
 
-公网或办公网只开放 `80/443`。`3000/4000` 仅允许网关访问；`5432/6379/7233/8233` 不应向普通客户端开放。当前开发 Compose 会把这些端口绑定到主机，必须通过主机防火墙限制访问。
+公网或办公网只开放 `80/443`。`3000/4000` 只供本机 Nginx 使用；`5432/6379/7233/8233` 不应向普通客户端开放。当前开发 Compose 会把这些端口绑定到主机，必须通过主机防火墙限制访问。
 
 建议控制面测试服务器从 `4 vCPU / 8 GiB RAM / 50 GiB` 磁盘起步。浏览器 worker 不包含在该容量内，每个并发浏览器任务需要单独预留 CPU 和内存。
 
@@ -219,11 +219,19 @@ docker compose -f docker-compose.dev.yaml run --rm api sh -lc \
 
 ### 6.4 启动 API 和 UI
 
+远程服务器不应直接暴露 Vite 开发服务。Vite 会让浏览器通过 `/@fs/` 按模块读取 monorepo 源文件，企业网关或安全设备可能重置这些请求。先启动 API，再在 API 容器已有的依赖环境中构建静态 UI：
+
 ```bash
-docker compose -f docker-compose.dev.yaml up -d api ui temporal-ui
-docker compose -f docker-compose.dev.yaml ps
-docker compose -f docker-compose.dev.yaml logs --tail=200 api ui
+docker compose -f docker-compose.dev.yaml up -d api temporal-ui
+docker compose -f docker-compose.dev.yaml exec api sh -lc \
+  'NODE_ENV=production pnpm --filter @autonoma/ui build'
+docker compose -f docker-compose.dev.yaml stop ui
+docker compose -f docker-compose.dev.yaml --profile server up -d --build ui-static
+docker compose -f docker-compose.dev.yaml ps api ui-static
+docker compose -f docker-compose.dev.yaml logs --tail=200 api ui-static
 ```
+
+`VITE_*` 变量在构建时写入浏览器资源。修改 `VITE_API_URL`、`VITE_INTERNAL_DOMAIN` 或前端代码后，必须重新执行构建和 `ui-static` 的 `--build --force-recreate`。`ui` 和 `ui-static` 都绑定主机端口 `3000`，不能同时运行。
 
 先在应用服务器本机验证：
 
@@ -234,77 +242,34 @@ curl --fail --show-error --head http://127.0.0.1:3000/
 
 第一条必须返回 `{"ok":true}`。第二条必须返回 HTTP 200。
 
-## 7. Nginx 网关配置
+## 7. Nginx 单机入口配置
 
-下面配置假设 TLS 在 `172.16.22.64` 终止，应用服务器是 `192.168.85.164`。证书路径和应用服务器地址按实际情况替换。
+DNS 将 `autonoma-test.ruijie.com.cn` 直接解析到 `172.16.3.245`。Nginx 由 Compose 的 `edge` 服务运行，不需要在宿主机安装 Nginx。配置文件是 `deployment/ruijie/nginx.conf`，容器内通过 `ui-static:3000` 和 `api:4000` 访问应用。
 
-```nginx
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
-upstream autonoma_test_ui {
-    server 192.168.85.164:3000;
-    keepalive 16;
-}
-
-upstream autonoma_test_api {
-    server 192.168.85.164:4000;
-    keepalive 16;
-}
-
-server {
-    listen 80;
-    server_name autonoma-test.ruijie.com.cn;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name autonoma-test.ruijie.com.cn;
-
-    ssl_certificate /etc/nginx/certs/autonoma-test.fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/autonoma-test.key;
-
-    client_max_body_size 50m;
-    large_client_header_buffers 4 32k;
-    proxy_buffer_size 32k;
-    proxy_buffers 8 32k;
-    proxy_busy_buffers_size 64k;
-
-    location ~ ^/(health$|llms\.txt$|v1/|rs/|flags/|\.well-known/ai-catalog\.json$|\.well-known/oauth-) {
-        proxy_pass http://autonoma_test_api;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-
-    location / {
-        proxy_pass http://autonoma_test_ui;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-    }
-}
-```
-
-应用配置后执行：
+先确认宿主机的入口端口没有被其他进程占用：
 
 ```bash
-nginx -t
-systemctl reload nginx
+ss -lntp | grep -E ':(80|443)\s' || true
 ```
 
-不要让 `/v1` 进入另一个 SPA 的 fallback，也不要让 `/health` 返回 HTML。两者都必须直接到 Autonoma API。
+向证书管理员申请包含 `autonoma-test.ruijie.com.cn` SAN 的证书及完整证书链。证书不进入仓库，默认放在宿主机以下路径：
+
+```bash
+install -d -m 700 /etc/autonoma/tls
+install -m 644 <证书链文件> /etc/autonoma/tls/fullchain.pem
+install -m 600 <私钥文件> /etc/autonoma/tls/privkey.pem
+```
+
+如需使用其他宿主机目录，在根目录 `.env` 设置 `AUTONOMA_TLS_DIR`。准备好证书后启动入口：
+
+```bash
+docker compose -f docker-compose.dev.yaml --profile server \
+  up -d --build ui-static edge
+docker compose -f docker-compose.dev.yaml exec edge nginx -t
+docker compose -f docker-compose.dev.yaml logs --tail=100 edge
+```
+
+不要使用自签名证书完成最终验收。不要让 `/v1` 进入 SPA fallback，也不要让 `/health` 返回 HTML；两者必须由 `edge` 直接转发到 API。
 
 ## 8. 上线验收
 
@@ -359,7 +324,12 @@ cd /opt/autonoma
 git pull --ff-only
 docker compose -f docker-compose.dev.yaml run --rm api sh -lc \
   'corepack enable && pnpm install --frozen-lockfile && cd packages/db && pnpm exec prisma migrate deploy'
-docker compose -f docker-compose.dev.yaml up -d --remove-orphans api ui
+docker compose -f docker-compose.dev.yaml up -d api
+docker compose -f docker-compose.dev.yaml exec api sh -lc \
+  'NODE_ENV=production pnpm --filter @autonoma/ui build'
+docker compose -f docker-compose.dev.yaml stop ui
+docker compose -f docker-compose.dev.yaml --profile server \
+  up -d --build --force-recreate ui-static edge
 curl --fail --show-error https://autonoma-test.ruijie.com.cn/health
 ```
 
