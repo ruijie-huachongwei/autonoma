@@ -111,7 +111,7 @@ At minimum, `.env` needs:
 | `REDIS_URL` | `redis://localhost:6379` |
 | `BETTER_AUTH_SECRET` | Any random string, for session signing |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
-| `GEMINI_API_KEY` | Google Gemini API key, for the AI features |
+| AI provider configuration | Either the built-in provider keys or an OpenAI-compatible endpoint; see `.env.example` |
 
 See `.env.example` for the full list, grouped by service, and the [development setup guide](https://docs.autonoma.app/development/setup/) for the long version.
 

@@ -10,8 +10,8 @@ The tool-loop agent abstraction (`AgentLoop`, `Agent`, `AgentTool`, `ReportResul
 
 | Export Path               | Description                                                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@autonoma/ai`            | Core primitives: registry, `ObjectGenerator`, `TextGenerator`, video, text utilities, the AI SDK message types the API speaks in, plus re-exported agent + compaction from `@autonoma/agent-core`. No `sharp`. |
-| `@autonoma/ai/env`        | Validated environment config (`GROQ_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`)                                                                                                                              |
+| `@autonoma/ai`            | Core primitives: registry, OpenAI-compatible model factory, `ObjectGenerator`, `TextGenerator`, video, text utilities, the AI SDK message types the API speaks in, plus re-exported agent + compaction from `@autonoma/agent-core`. No `sharp`. |
+| `@autonoma/ai/env`        | Validated environment config for built-in and OpenAI-compatible providers                                                                                                                                      |
 | `@autonoma/ai/evaluation` | Generic AI evaluation framework for benchmarking accuracy                                                                                                                                                      |
 
 ## Directory Structure
@@ -187,9 +187,19 @@ Defined in `src/env.ts` using `@t3-oss/env-core`:
 
 | Variable             | Description               |
 | -------------------- | ------------------------- |
-| `GROQ_KEY`           | API key for Groq provider |
-| `GEMINI_API_KEY`     | API key for Google Gemini |
-| `OPENROUTER_API_KEY` | API key for OpenRouter    |
+| `AI_PROVIDER` | `builtin` (default) or `openai-compatible` for web/mobile execution engines |
+| `GROQ_KEY` | API key for Groq when its built-in model is used |
+| `GEMINI_API_KEY` | API key for Google Gemini when its built-in model is used |
+| `OPENROUTER_API_KEY` | API key for OpenRouter when its built-in model is used |
+| `AI_COMPATIBLE_BASE_URL` | Custom API base URL, including `/v1` |
+| `AI_COMPATIBLE_API_KEY` | Custom endpoint bearer token |
+| `AI_COMPATIBLE_MODEL` | Default custom model ID |
+| `AI_COMPATIBLE_FAST_VISUAL_MODEL` | Optional lightweight visual model override |
+| `AI_COMPATIBLE_SMART_VISUAL_MODEL` | Optional agent and visual assertion model override |
+| `AI_COMPATIBLE_FAST_TEXT_MODEL` | Optional text model override |
+| `AI_COMPATIBLE_POINTER_MODEL` | Optional web grounding model override |
+
+`createOpenAICompatibleModelEntry` builds a registry entry backed by OpenAI Chat Completions. Custom entries retain token telemetry but use zero monetary pricing because the package cannot know a private endpoint's rates.
 
 ## Architecture Notes
 

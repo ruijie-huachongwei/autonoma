@@ -9,7 +9,7 @@ Backend API server for the Autonoma platform. Exposes a tRPC API over HTTP with 
 - **API Layer:** tRPC with SuperJSON transformer
 - **Auth:** better-auth (Google, GitHub + Microsoft OAuth, session-based, Redis-backed with a Postgres copy)
 - **Database:** PostgreSQL via Prisma (`@autonoma/db`)
-- **Storage:** S3 via `@autonoma/storage`
+- **Storage:** S3-compatible object storage via `@autonoma/storage` (AWS S3, Alibaba Cloud OSS, MinIO, or MiniStack)
 - **Observability:** Sentry (logging, error tracking, tracing)
 - **Analytics:** PostHog via `@autonoma/analytics`
 - **Build:** tsup (bundled ESM, targets Node 22)
@@ -47,22 +47,22 @@ The identity exchange route is part of the accompanying `tianshu-manager-service
 
 `CAS_IDENTITY_EXCHANGE_SECRET` must match the server-side value in `tianshu-manager-service` and must never use a `VITE_*` variable. The manager-web origin is not the CAS `service` callback: CAS redirects the browser to the Autonoma callback shown below.
 
-For local hosts-based testing, map `autonoma.ruijie.com.cn` to the Autonoma host and use the Vite origin for UI, API proxying, and the CAS callback:
+For local hosts-based testing, map `autonoma-test.ruijie.com.cn` to the Autonoma host and use the Vite origin for UI, API proxying, and the CAS callback:
 
 ```dotenv
-APP_URL=http://autonoma.ruijie.com.cn:3000
-BETTER_AUTH_URL=http://autonoma.ruijie.com.cn:3000
-VITE_API_URL=http://autonoma.ruijie.com.cn:3000
-ALLOWED_ORIGINS=http://autonoma.ruijie.com.cn:3000
+APP_URL=http://autonoma-test.ruijie.com.cn:3000
+BETTER_AUTH_URL=http://autonoma-test.ruijie.com.cn:3000
+VITE_API_URL=http://autonoma-test.ruijie.com.cn:3000
+ALLOWED_ORIGINS=http://autonoma-test.ruijie.com.cn:3000
 ```
 
 Allowlist this exact callback base URL in the manager service and CAS environment:
 
 ```text
-http://autonoma.ruijie.com.cn:3000/v1/enterprise-auth/cas/callback
+http://autonoma-test.ruijie.com.cn:3000/v1/enterprise-auth/cas/callback
 ```
 
-For deployment behind an HTTPS reverse proxy, remove `:3000` and use `https://autonoma.ruijie.com.cn` for all three public origins.
+For deployment behind an HTTPS reverse proxy, remove `:3000` and use `https://autonoma-test.ruijie.com.cn` for all four public-origin values.
 
 ## Application memories
 
@@ -126,7 +126,7 @@ Defined in `src/env.ts` using `@t3-oss/env-core` with Zod validation. Also exten
 | `AUTONOMA_SHARED_SECRET`                    | No       | -                          | HMAC secret shared with the Autonoma self-hosted E2E test runner, used to verify signatures on `POST /api/autonoma`. When unset (the default in prod and most alphas), the endpoint mounts an inert `503`.                                                                                             |
 | `AUTONOMA_SIGNING_SECRET`                   | No       | -                          | Server-private secret that signs the refs-token authorizing `down` teardown on `/api/autonoma`. Must be set together with `AUTONOMA_SHARED_SECRET` to activate the endpoint.                                                                                                                           |
 
-Additionally, the inherited env schemas require database (`DATABASE_URL`), logger (`SENTRY_DSN`, `NODE_ENV`), and storage (`S3_BUCKET`, AWS credentials) variables.
+Additionally, the inherited env schemas require database (`DATABASE_URL`), logger (`SENTRY_DSN`, `NODE_ENV`), and storage (`S3_BUCKET`, `S3_REGION`) variables. Storage may use the AWS SDK credential chain or static credentials; S3-compatible backends such as Alibaba Cloud OSS also set `S3_ENDPOINT` and the required addressing mode.
 
 ## Architecture
 

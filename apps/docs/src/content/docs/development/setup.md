@@ -67,7 +67,18 @@ cp .env.example .env
 | `BETTER_AUTH_URL` | The API's own address - where `/v1/auth/*` is reachable | `http://localhost:4000` for local dev. Better-auth uses this (not `APP_URL`) as `baseURL`, so it's what OAuth providers redirect back to. |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | Create OAuth credentials in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Set the authorized redirect URI to `http://localhost:4000/v1/auth/callback/google` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Same Google Cloud Console OAuth credentials page |
-| `GEMINI_API_KEY` | Google Gemini API key | Get one from [Google AI Studio](https://aistudio.google.com/apikey) |
+| `AI_PROVIDER` | Execution model provider | Keep `builtin` for the standard provider set, or use `openai-compatible` for a private gateway |
+
+For the built-in provider set, configure `GEMINI_API_KEY`, `GROQ_KEY`, and `OPENROUTER_API_KEY`. To use a single OpenAI-compatible endpoint instead:
+
+```dotenv
+AI_PROVIDER=openai-compatible
+AI_COMPATIBLE_BASE_URL=https://llm.example.com/v1
+AI_COMPATIBLE_API_KEY=your-compatible-api-key
+AI_COMPATIBLE_MODEL=qwen2.5-vl-72b-instruct
+```
+
+The custom model must support image inputs, structured output, and tool calling. See the [environment variable reference](/development/environment-variables/#ai-services) for optional per-capability model overrides.
 
 ### Optional: GitHub sign-in
 

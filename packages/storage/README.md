@@ -1,6 +1,6 @@
 # @autonoma/storage
 
-A lightweight object storage abstraction with pluggable providers. Defines a `StorageProvider` interface and ships two implementations - S3 (for production) and local filesystem (for development/testing).
+A lightweight object storage abstraction with pluggable providers. Defines a `StorageProvider` interface and ships two implementations - S3-compatible object storage (AWS S3, Alibaba Cloud OSS, MinIO, or MiniStack) and local filesystem (for development/testing).
 
 ## Exports
 
@@ -46,6 +46,7 @@ const storage = new S3Storage({
     accessKeyId: "...", // optional - omit both to use the SDK's default credential chain
     secretAccessKey: "...",
     endpoint: "http://localhost:4566", // optional - for MiniStack/MinIO
+    forcePathStyle: true,
 });
 
 const url = await storage.upload("artifacts/video.mp4", videoBuffer, "video/mp4");
@@ -57,8 +58,25 @@ await storage.delete(url);
 Key details:
 - Keys can be plain paths (`artifacts/video.mp4`) or S3 URIs (`s3://bucket/key`) - the `s3://` prefix is stripped automatically.
 - `upload` returns an `s3://bucket/key` URI. Pass an optional `contentType` (third arg) to set the stored MIME type; it defaults to `application/octet-stream`. Set it for media (e.g. `video/webm`) so browsers can play and seek the object.
-- Setting `endpoint` enables path-style addressing (required for MiniStack/MinIO).
+- An explicitly constructed provider with `endpoint` keeps the historical path-style default. Set `forcePathStyle: false` for virtual-host providers such as Alibaba Cloud OSS.
 - Throws `ObjectNotFoundError` when downloading a key that does not exist.
+
+### Alibaba Cloud OSS
+
+OSS exposes an S3-compatible API, so every existing consumer can continue using `S3Storage`. Configure the OSS S3-compatible endpoint and RAM credentials:
+
+```dotenv
+S3_BUCKET=autonoma-artifacts
+S3_REGION=cn-hangzhou
+S3_ENDPOINT=https://s3.oss-cn-hangzhou.aliyuncs.com
+S3_FORCE_PATH_STYLE=false
+S3_ACCESS_KEY_ID=<oss-ram-access-key-id>
+S3_SECRET_ACCESS_KEY=<oss-ram-access-key-secret>
+```
+
+The region and endpoint must match the bucket. For an application running in Alibaba Cloud in the same region, prefer the internal endpoint, for example `https://s3.oss-cn-hangzhou-internal.aliyuncs.com`. Keep the bucket private and grant its RAM identity only the object operations the application needs.
+
+The `S3_` prefix describes the protocol consumed by this package; the values above are OSS values, not AWS credentials. Node.js AWS SDK v3 uses Signature V4 and is supported by OSS. Stored locators remain `s3://<bucket>/<key>` so existing database rows and callers do not need migration.
 
 ### LocalStorageProvider
 
@@ -83,6 +101,8 @@ When using `S3Storage.createFromEnv()`, the following variables are required and
 |---|---|---|
 | `S3_BUCKET` | yes | S3 bucket name |
 | `S3_REGION` | yes | AWS region |
+| `S3_ENDPOINT` | no | S3-compatible endpoint. Set this to the Alibaba Cloud OSS S3-compatible endpoint when using OSS |
+| `S3_FORCE_PATH_STYLE` | no | `false` by default. Keep false for OSS; set true for MinIO/MiniStack when required |
 | `S3_ACCESS_KEY_ID` | no | Static access key ID |
 | `S3_SECRET_ACCESS_KEY` | no | Static secret access key |
 

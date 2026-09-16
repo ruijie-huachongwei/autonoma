@@ -1327,6 +1327,9 @@ importers:
       '@ai-sdk/groq':
         specifier: 'catalog:'
         version: 4.0.24(zod@4.3.6)
+      '@ai-sdk/openai':
+        specifier: 'catalog:'
+        version: 4.0.33(zod@4.3.6)
       '@autonoma/agent-core':
         specifier: workspace:*
         version: link:../agent-core

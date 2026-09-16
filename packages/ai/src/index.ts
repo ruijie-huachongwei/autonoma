@@ -6,6 +6,7 @@
 export { ModelRegistry, type LanguageModel, type VideoModel, NotAVideoModelError } from "./registry/model-registry";
 export type { ModelOptions, ModelReasoningEffort } from "./registry/options";
 export { MODEL_ENTRIES, OPENROUTER_MODEL_ENTRIES } from "./registry/model-entries";
+export { createOpenAICompatibleModelEntry } from "./registry/openai-compatible-model-entry";
 export { openRouterProvider } from "./registry/providers";
 export { simpleCostFunction, inputCacheCostFunction, type CostFunction } from "./registry/costs";
 export type { ModelUsage } from "./registry/usage";

@@ -40,8 +40,20 @@ export class LLMProvider<TProvider extends LanguageModelProvider> {
     }
 }
 
-export const groqProvider = new LLMProvider(() => createGroq({ apiKey: env.GROQ_KEY }));
+export const groqProvider = new LLMProvider(() => createGroq({ apiKey: requireProviderKey("GROQ_KEY", env.GROQ_KEY) }));
 
-export const googleProvider = new LLMProvider(() => createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY }));
+export const googleProvider = new LLMProvider(() =>
+    createGoogleGenerativeAI({ apiKey: requireProviderKey("GEMINI_API_KEY", env.GEMINI_API_KEY) }),
+);
 
-export const openRouterProvider = new LLMProvider(() => createOpenRouter({ apiKey: env.OPENROUTER_API_KEY }));
+export const openRouterProvider = new LLMProvider(() =>
+    createOpenRouter({ apiKey: requireProviderKey("OPENROUTER_API_KEY", env.OPENROUTER_API_KEY) }),
+);
+
+function requireProviderKey(name: string, value: string | undefined): string {
+    if (value == null) {
+        throw new Error(`${name} is required when using its built-in AI provider`);
+    }
+
+    return value;
+}

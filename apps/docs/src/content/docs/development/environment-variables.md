@@ -26,7 +26,8 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 GITHUB_CLIENT_ID=your-github-oauth-client-id
 GITHUB_CLIENT_SECRET=your-github-oauth-client-secret
 
-# AI model keys (needed for test execution)
+# Built-in AI providers (needed for test execution)
+AI_PROVIDER=builtin
 GEMINI_API_KEY=your-gemini-key
 GROQ_KEY=your-groq-key
 OPENROUTER_API_KEY=your-openrouter-key
@@ -34,6 +35,8 @@ OPENROUTER_API_KEY=your-openrouter-key
 # S3-compatible storage (can use MinIO locally)
 S3_BUCKET=autonoma-local
 S3_REGION=us-east-1
+S3_ENDPOINT=http://localhost:9000
+S3_FORCE_PATH_STYLE=true
 S3_ACCESS_KEY_ID=minioadmin
 S3_SECRET_ACCESS_KEY=minioadmin
 ```
@@ -128,13 +131,34 @@ For local development, a typical value is `postgresql://postgres:postgres@localh
 
 **Source:** `packages/ai/src/env.ts`
 
-These keys are required by the execution engines (web and mobile) and any service that runs AI inference. The API server does not run inference itself, so it needs none of them.
+The web and mobile execution engines support the built-in provider set or one OpenAI-compatible Chat Completions endpoint. The API server does not run test-execution inference itself, so it needs none of these values.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `GEMINI_API_KEY` | Yes | - | Google Gemini API key. Used for the primary model (Gemini 3 Flash/Pro), point detection, object detection, and visual condition checking. |
-| `GROQ_KEY` | Yes | - | Groq API key. Used for fast inference with open-source models (e.g., GPT-OSS-120B). |
-| `OPENROUTER_API_KEY` | Yes | - | OpenRouter API key. Provides access to Ministral-8B and serves as a fallback provider for open-source models. |
+| `AI_PROVIDER` | No | `builtin` | `builtin` uses Gemini, Groq, and OpenRouter. `openai-compatible` routes every web/mobile execution model slot through the custom endpoint below. |
+| `GEMINI_API_KEY` | When `AI_PROVIDER=builtin` | - | Google Gemini API key. Used for the primary visual models. |
+| `GROQ_KEY` | When `AI_PROVIDER=builtin` | - | Groq API key. Used for fast text inference. |
+| `OPENROUTER_API_KEY` | When `AI_PROVIDER=builtin` | - | OpenRouter API key. Used for fast visual inference and pointer grounding. |
+| `AI_COMPATIBLE_BASE_URL` | When `AI_PROVIDER=openai-compatible` | - | OpenAI-compatible API base URL, including its API prefix, for example `https://llm.example.com/v1`. |
+| `AI_COMPATIBLE_API_KEY` | When `AI_PROVIDER=openai-compatible` | - | Bearer token sent to the compatible endpoint. |
+| `AI_COMPATIBLE_MODEL` | When `AI_PROVIDER=openai-compatible` | - | Default model ID for all execution capabilities. |
+| `AI_COMPATIBLE_FAST_VISUAL_MODEL` | No | `AI_COMPATIBLE_MODEL` | Optional model override for lightweight screenshot analysis. |
+| `AI_COMPATIBLE_SMART_VISUAL_MODEL` | No | `AI_COMPATIBLE_MODEL` | Optional model override for agent reasoning and visual assertions. |
+| `AI_COMPATIBLE_FAST_TEXT_MODEL` | No | `AI_COMPATIBLE_MODEL` | Optional model override for fast text-only work. |
+| `AI_COMPATIBLE_POINTER_MODEL` | No | `AI_COMPATIBLE_MODEL` | Optional web-only model override for visual element grounding. |
+
+Example custom configuration:
+
+```dotenv
+AI_PROVIDER=openai-compatible
+AI_COMPATIBLE_BASE_URL=https://llm.example.com/v1
+AI_COMPATIBLE_API_KEY=your-compatible-api-key
+AI_COMPATIBLE_MODEL=qwen2.5-vl-72b-instruct
+```
+
+The selected endpoint must implement OpenAI-compatible `/chat/completions`. For full test execution, its models must accept image inputs, structured JSON output, and tool calls. Use the per-capability overrides when one model does not provide all three capabilities. Custom endpoint usage retains token telemetry, but its monetary cost is recorded as zero because Autonoma cannot infer private-provider pricing.
+
+This switch covers web/mobile test generation and execution. The diffs worker has separate analysis and video model settings documented by that worker.
 
 :::note
 Validation is skipped when running in Vitest (`VITEST` env var is set), so you do not need these keys to run unit tests.
@@ -142,7 +166,7 @@ Validation is skipped when running in Vitest (`VITEST` env var is set), so you d
 
 ---
 
-## Storage (S3)
+## Storage (S3-compatible)
 
 **Source:** `packages/storage/src/env.ts`
 
@@ -150,13 +174,21 @@ Used for storing screenshots, video recordings, test artifacts, and other binary
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `S3_BUCKET` | Yes | - | S3 bucket name for storing artifacts. |
-| `S3_REGION` | Yes | - | AWS region of the S3 bucket (e.g., `us-east-1`). |
-| `S3_ACCESS_KEY_ID` | Yes | - | AWS access key ID (or MinIO equivalent) for S3 authentication. |
-| `S3_SECRET_ACCESS_KEY` | Yes | - | AWS secret access key (or MinIO equivalent) for S3 authentication. |
+| `S3_BUCKET` | Yes | - | Bucket name for storing artifacts. |
+| `S3_REGION` | Yes | - | Region of the bucket (e.g., `us-east-1` or `cn-hangzhou`). |
+| `S3_ENDPOINT` | No | AWS SDK default | S3-compatible endpoint. Set this to the OSS S3-compatible endpoint when using Alibaba Cloud OSS. |
+| `S3_FORCE_PATH_STYLE` | No | `false` | Keep `false` for AWS S3 and Alibaba Cloud OSS. Set `true` for local providers that require path-style URLs. |
+| `S3_ACCESS_KEY_ID` | No | AWS SDK credential chain | Static access key ID. For OSS, use a restricted RAM AccessKey ID. |
+| `S3_SECRET_ACCESS_KEY` | No | AWS SDK credential chain | Static secret access key. For OSS, use the matching RAM AccessKey Secret. |
+
+:::tip[Alibaba Cloud OSS]
+OSS exposes an S3-compatible API, so no separate OSS SDK is required. For a bucket in Hangzhou, use `S3_REGION=cn-hangzhou`, `S3_ENDPOINT=https://s3.oss-cn-hangzhou.aliyuncs.com`, and `S3_FORCE_PATH_STYLE=false`. If the application runs in the same Alibaba Cloud region, prefer the internal endpoint such as `https://s3.oss-cn-hangzhou-internal.aliyuncs.com`. The endpoint and region must match the bucket.
+
+The `S3_` variable names describe the protocol used by Autonoma. The credentials are Alibaba Cloud RAM credentials when OSS is the backend. Stored object locators remain in `s3://bucket/key` form for application compatibility.
+:::
 
 :::tip[Local development with MinIO]
-You can run [MinIO](https://min.io/) locally as an S3-compatible object store. The default credentials are `minioadmin`/`minioadmin`. Point `S3_REGION` to any valid region string (e.g., `us-east-1`) and create a bucket matching your `S3_BUCKET` value.
+You can run [MinIO](https://min.io/) locally as an S3-compatible object store. The default credentials are `minioadmin`/`minioadmin`. Set `S3_ENDPOINT` to the MinIO API endpoint (commonly `http://localhost:9000`), set `S3_FORCE_PATH_STYLE=true`, use any valid region string (e.g., `us-east-1`), and create a bucket matching your `S3_BUCKET` value.
 :::
 
 ---
@@ -356,4 +388,4 @@ Two things about this are easy to get wrong:
 - `BETTER_AUTH_SECRET` - generate one with `openssl rand -hex 32`.
 - `BETTER_AUTH_URL` - set to `http://localhost:4000`. The origin only; appending `/v1` 404s every auth endpoint.
 - AI keys (`GEMINI_API_KEY`, `GROQ_KEY`, `OPENROUTER_API_KEY`) - required if you are running test execution. Not needed if you are only working on the UI or API without triggering test runs.
-- S3 credentials - required for artifact storage. Use MinIO locally.
+- S3-compatible storage - a bucket and region are required for artifact storage. Use MinIO locally or configure AWS S3/Alibaba Cloud OSS credentials.

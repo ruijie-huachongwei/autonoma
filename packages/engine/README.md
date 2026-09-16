@@ -86,6 +86,19 @@ What the LLM sees lives on the matching `CommandTool` (`execution-agent/agent/to
 
 `LocalRunner` extends this for local development - loads test cases from markdown files and saves artifacts to disk.
 
+## Model Provider Configuration
+
+By default, `createEngineModelRegistry` and `createWebEngineModelRegistry` use the built-in Gemini, Groq, and OpenRouter model slots. Set the following environment variables on the web/mobile worker to route every slot through an OpenAI-compatible Chat Completions endpoint:
+
+```dotenv
+AI_PROVIDER=openai-compatible
+AI_COMPATIBLE_BASE_URL=https://llm.example.com/v1
+AI_COMPATIBLE_API_KEY=your-compatible-api-key
+AI_COMPATIBLE_MODEL=qwen2.5-vl-72b-instruct
+```
+
+`AI_COMPATIBLE_FAST_VISUAL_MODEL`, `AI_COMPATIBLE_SMART_VISUAL_MODEL`, `AI_COMPATIBLE_FAST_TEXT_MODEL`, and `AI_COMPATIBLE_POINTER_MODEL` optionally override the default model for individual capabilities. The endpoint models used for visual slots must accept image inputs; agent and command flows also require structured output and tool calling.
+
 ## Extending for a New Platform
 
 1. Implement all driver interfaces using your platform's SDK.

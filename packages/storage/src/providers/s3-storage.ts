@@ -16,8 +16,10 @@ export interface S3StorageConfig {
      */
     accessKeyId?: string;
     secretAccessKey?: string;
-    /** Custom endpoint URL, e.g. for MiniStack or MinIO. Enables path-style addressing. */
+    /** Custom S3-compatible endpoint URL, e.g. Alibaba Cloud OSS, MiniStack, or MinIO. */
     endpoint?: string;
+    /** Defaults to true for explicitly configured endpoints to preserve local provider behavior. */
+    forcePathStyle?: boolean;
 }
 
 export class ObjectNotFoundError extends Error {
@@ -62,7 +64,7 @@ export class S3Storage implements StorageProvider {
 
         if (this.config.endpoint != null) {
             clientConfig.endpoint = this.config.endpoint;
-            clientConfig.forcePathStyle = true;
+            clientConfig.forcePathStyle = this.config.forcePathStyle ?? true;
         }
         this.s3 = new S3Client(clientConfig);
     }
@@ -71,6 +73,8 @@ export class S3Storage implements StorageProvider {
         return new S3Storage({
             bucket,
             region: env.S3_REGION,
+            endpoint: env.S3_ENDPOINT,
+            forcePathStyle: env.S3_FORCE_PATH_STYLE,
             accessKeyId: env.S3_ACCESS_KEY_ID,
             secretAccessKey: env.S3_SECRET_ACCESS_KEY,
         });
